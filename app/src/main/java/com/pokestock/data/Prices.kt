@@ -18,7 +18,7 @@ class Prices(val date: String, private val map: HashMap<Int, IntArray>) {
         val shared = card.variants.any { it.cm == v.cm && !it.key.startsWith("reverse") }
         val trend = p[0]; val trendHolo = p[3]; val avg30 = p[1]; val avg30Holo = p[4]
         val value = if (isReverse && shared) firstPositive(trendHolo, avg30Holo)
-        else if (isReverse) firstPositive(trend, avg30, trendHolo)
+        else if (isReverse) firstPositive(trendHolo, trend, avg30Holo, avg30)
         else firstPositive(trend, avg30)
         return value
     }
@@ -77,8 +77,10 @@ class History(val days: List<String>, val weeks: List<String>, private val d: Ha
     fun series(card: Card, variantKey: String): List<Pair<String, Int>> {
         val v = card.variants.firstOrNull { it.key == variantKey } ?: return emptyList()
         if (v.cm == 0) return emptyList()
-        val holo = variantKey.startsWith("reverse") && card.variants.any { it.cm == v.cm && !it.key.startsWith("reverse") }
-        val col = if (holo) 1 else 0
+        val shared = card.variants.any { it.cm == v.cm && !it.key.startsWith("reverse") }
+        val rev = variantKey.startsWith("reverse")
+        val hasHolo = (d[v.cm]?.get(1)?.any { it > 0 } == true) || (w[v.cm]?.get(1)?.any { it > 0 } == true)
+        val col = if (rev && (shared || hasHolo)) 1 else 0
         val out = ArrayList<Pair<String, Int>>()
         val firstDay = days.firstOrNull() ?: "9999"
         w[v.cm]?.let { s -> for (i in weeks.indices) if (weeks[i] < firstDay && i < s[col].size && s[col][i] > 0) out.add(weeks[i] to s[col][i]) }

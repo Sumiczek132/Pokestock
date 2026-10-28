@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         AppState.update(applicationContext)
+        if (com.pokestock.data.DriveSync.fileUri(applicationContext) != null) com.pokestock.data.DriveSync.sync(applicationContext)
         return Result.success()
     }
 }
