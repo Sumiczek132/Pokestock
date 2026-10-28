@@ -117,7 +117,17 @@ fun PokestockRoot(startOnSync: Boolean) {
             BottomTabs()
         }
         AnimatedVisibility(Nav.page != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            when (Nav.page) { "top" -> TopScreen(); "trade" -> TradeScreen(); else -> {} }
+            val pg = Nav.page ?: ""
+            when {
+                pg == "top" -> TopScreen()
+                pg == "trade" -> TradeScreen()
+                pg == "dupes" -> DuplicatesScreen()
+                pg == "scan" -> ScanScreen()
+                pg == "dexbinder" -> DexBinderScreen()
+                pg.startsWith("binder:") -> SetBinderScreen(pg.removePrefix("binder:"))
+                pg.startsWith("quick:") -> QuickAddScreen(pg.removePrefix("quick:"))
+                else -> {}
+            }
         }
         AnimatedVisibility(Nav.slot != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             Nav.slot?.let { SlotSheet(it) }

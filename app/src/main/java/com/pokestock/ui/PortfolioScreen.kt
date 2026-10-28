@@ -50,6 +50,8 @@ fun PortfolioScreen() {
         }
         Snapshot(total, count, holds.map { it.card.key }.toSet().size + slabs.map { it.card }.toSet().size, byLang, top, recent, slabs, series)
     }
+    val wctx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(v, prices) { runCatching { com.pokestock.data.WidgetData.publish(wctx) } }
     val binder = remember(v) { AppState.store.doc.binder.count { it.value.v.isNotEmpty() } }
     val days = mapOf("1M" to 30L, "3M" to 91L, "6M" to 182L, "1Y" to 365L)[Nav.range]
     val cut = if (days == null) data.series else data.series.filter { !it.first.isBefore(LocalDate.now().minusDays(days)) }
@@ -97,6 +99,8 @@ fun PortfolioScreen() {
                     Text("Trade now ›", color = p.want, fontWeight = FontWeight.SemiBold)
                 }
             }
+            Gap(8.dp)
+            Btn("Find duplicates to trade", Modifier.fillMaxWidth()) { Nav.page = "dupes" }
             SectionHead("Most valuable")
         }
         items(data.top, key = { "t" + it.first.card.key + it.first.variant }) { (h, pr) ->

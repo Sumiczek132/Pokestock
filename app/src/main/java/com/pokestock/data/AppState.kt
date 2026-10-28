@@ -101,6 +101,8 @@ object AppState {
                     }
                 }
                 if (changed) { loadError = ""; loadLocal() }
+                runCatching { Alerts.check(ctx) }
+                runCatching { WidgetData.publish(ctx) }
                 if (catalog.sets.none { !it.custom }) throw RuntimeException(loadError.ifEmpty { "the card list didn't load" })
                 prefs.edit().putLong("checkedAt", System.currentTimeMillis()).apply()
                 status = if (changed) "Updated: prices from ${prices.date}" else "Already up to date (prices from ${prices.date})"

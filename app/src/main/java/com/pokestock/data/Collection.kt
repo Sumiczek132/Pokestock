@@ -38,6 +38,8 @@ class CollectionDoc {
     val trade = HashMap<String, Stamped<Int>>()          // "cardKey|variant" -> copies in the trade binder
     val tradeSlab = HashMap<String, Stamped<Boolean>>()  // slab id -> in the trade binder
     val trades = HashMap<String, Stamped<String>>()      // trade id -> record (JSON text)
+    val binderMode = HashMap<String, Stamped<String>>()  // set key -> "base" | "base_rh" | "master" | "" (not a binder)
+    val alerts = HashMap<String, Stamped<Int>>()         // "cardKey|variant" -> alert below this many pence (-1 = off)
 
     fun toJson(): JSONObject {
         val o = JSONObject()
@@ -56,6 +58,8 @@ class CollectionDoc {
         o.put("trade", JSONObject().apply { trade.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
         o.put("tradeSlab", JSONObject().apply { tradeSlab.forEach { (k, s) -> put(k, JSONArray().put(if (s.v) 1 else 0).put(s.t)) } })
         o.put("trades", JSONObject().apply { trades.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
+        o.put("binderMode", JSONObject().apply { binderMode.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
+        o.put("alerts", JSONObject().apply { alerts.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
         o.put("custom", JSONObject().apply {
             custom.forEach { (k, c) ->
                 put(k, JSONObject().put("lang", c.lang).put("set", c.set).put("num", c.number).put("name", c.name)
@@ -80,6 +84,8 @@ class CollectionDoc {
         take(trade, other.trade) { it.t }
         take(tradeSlab, other.tradeSlab) { it.t }
         take(trades, other.trades) { it.t }
+        take(binderMode, other.binderMode) { it.t }
+        take(alerts, other.alerts) { it.t }
         other.binder.forEach { (k, v) -> val m = binder[k]; if (m == null || v.t > m.t) { binder[k] = v; n++ } }
         return n
     }
@@ -103,6 +109,8 @@ class CollectionDoc {
             o.optJSONObject("trade")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.trade[k] = Stamped(a.getInt(0), a.getLong(1)) } }
             o.optJSONObject("tradeSlab")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.tradeSlab[k] = Stamped(a.getInt(0) == 1, a.getLong(1)) } }
             o.optJSONObject("trades")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.trades[k] = Stamped(a.getString(0), a.getLong(1)) } }
+            o.optJSONObject("binderMode")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.binderMode[k] = Stamped(a.getString(0), a.getLong(1)) } }
+            o.optJSONObject("alerts")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.alerts[k] = Stamped(a.getInt(0), a.getLong(1)) } }
             o.optJSONObject("custom")?.let { j ->
                 j.keys().forEach { k ->
                     val c = j.getJSONObject(k)
@@ -198,6 +206,14 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
     fun setOverride(cardKey: String, variant: String, pence: Int?) { doc.overrides["$cardKey|$variant"] = Stamped(pence ?: -1, now()); changed() }
 
     fun addCustom(c: CustomCard) { doc.custom[c.id] = c; changed() }
+
+    // ---------- set binders and alerts ----------
+    fun binderMode(setKey: String): String = doc.binderMode[setKey]?.v ?: ""
+    fun setBinderMode(setKey: String, mode: String) { doc.binderMode[setKey] = Stamped(mode, now()); changed() }
+    fun alert(cardKey: String, variant: String): Int? = doc.alerts["$cardKey|$variant"]?.v?.takeIf { it > 0 }
+    fun setAlert(cardKey: String, variant: String, pence: Int?) { doc.alerts["$cardKey|$variant"] = Stamped(pence ?: -1, now()); changed() }
+    fun activeAlerts(): List<Pair<String, Int>> = doc.alerts.filter { it.value.v > 0 }.map { it.key to it.value.v }
+    fun addOne(cardKey: String, variant: String) = setQty(cardKey, variant, qty(cardKey, variant) + 1)
 
     // ---------- trade binder ----------
     /** Copies of a version in the trade binder (never more than you own raw). */

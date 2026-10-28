@@ -193,6 +193,29 @@ fun CardSheet(key: String) {
             }
         }
 
+        // Price alert
+        run {
+            val alert = AppState.store.alert(card.key, k)
+            var editAlert by remember(key, k) { mutableStateOf(false) }
+            if (!editAlert) Text(if (alert != null) "🔔 Alert when ${Labels.variantLabel(card, k)} is ${pounds(alert)} or less · Change" else "Set a price alert for this version",
+                color = p.want, fontSize = 14.sp, modifier = Modifier.clickable { editAlert = true }.padding(vertical = 4.dp))
+            else {
+                var txt by remember(key, k) { mutableStateOf(alert?.let { String.format("%.2f", it / 100.0) } ?: "") }
+                Panel {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Sub("The morning price update notifies you when Cardmarket's price is at or below this.")
+                        MoneyField(txt, "e.g. 25.00", { txt = it })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Btn("No alert", Modifier.weight(1f)) { AppState.store.setAlert(card.key, k, null); editAlert = false }
+                            Btn("Save", Modifier.weight(1f), primary = true) {
+                                val pp = parsePounds(txt); if (pp == null) say("Type a price like 25.00") else { AppState.store.setAlert(card.key, k, pp); editAlert = false; say("Alert set") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Own price
         if (!editPrice) Text(if (own != null) "Your price is set · Change or remove" else "Set your own price for this version",
             color = p.want, fontSize = 14.sp, modifier = Modifier.clickable { editPrice = true }.padding(vertical = 4.dp))

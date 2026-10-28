@@ -74,7 +74,7 @@ object Schedule {
         wm.enqueueUniquePeriodicWork("stale-check", ExistingPeriodicWorkPolicy.UPDATE, stale)
     }
 
-    fun notify(ctx: Context, title: String, text: String) {
+    fun notify(ctx: Context, title: String, text: String, id: Int = 1) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Price updates", NotificationManager.IMPORTANCE_DEFAULT))
@@ -84,6 +84,6 @@ object Schedule {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title).setContentText(text)
             .setContentIntent(pi).setAutoCancel(true).build()
-        try { NotificationManagerCompat.from(ctx).notify(1, n) } catch (_: SecurityException) {}
+        try { NotificationManagerCompat.from(ctx).notify(id, n) } catch (_: SecurityException) {}
     }
 }

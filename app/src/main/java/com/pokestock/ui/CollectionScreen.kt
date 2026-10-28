@@ -114,7 +114,11 @@ private fun SetList() {
             Gap(10.dp)
             Segmented(listOf("EN" to "English", "JA" to "Japanese", "ZH" to "Chinese"), lang) { Nav.lang = it }
             Gap(10.dp)
-            SearchField(Nav.colQuery, "Search every ${if (lang == "EN") "English" else if (lang == "JA") "Japanese" else "Chinese"} card or set") { Nav.colQuery = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SearchField(Nav.colQuery, "Search every ${if (lang == "EN") "English" else if (lang == "JA") "Japanese" else "Chinese"} card or set") { Nav.colQuery = it } }
+                Spacer(Modifier.width(8.dp))
+                Btn("Scan") { Nav.page = "scan" }
+            }
             if (cat.sets.isEmpty()) { Gap(); Panel { Text("The card list downloads the first time you're online. Open the Sync tab and tap Update.", color = p.muted) } }
         }
         if (q.length >= 2) {
@@ -133,6 +137,18 @@ private fun SetList() {
         if (q.isEmpty()) item {
             SectionHead("Graded")
             SetRowBox("Graded slabs", "${slabs.size} slabs · " + pounds(slabs.sumOf { maxOf(0, it.price).toLong() }), null) { Nav.openSet = "slabs" }
+        }
+        val binderSets = if (q.isEmpty()) sets.filter { AppState.store.binderMode(it.key).isNotEmpty() }.sortedByDescending { it.date } else emptyList()
+        if (binderSets.isNotEmpty()) {
+            item { SectionHead("Your set binders") }
+            items(binderSets, key = { "b" + it.key }) { s ->
+                val mode = AppState.store.binderMode(s.key)
+                val pk = remember(v, s.key, mode) { com.pokestock.data.Binder.pockets(s, mode) }
+                val have = pk.count { it.owned }
+                SetRowBox(s.name, "${com.pokestock.data.Binder.modeName(mode)} · $have/${pk.size} pockets", if (pk.isEmpty()) null else have.toFloat() / pk.size, s.logo.ifEmpty { s.symbol }) {
+                    Nav.page = "binder:" + s.key
+                }
+            }
         }
         if (lang == "ZH") item {
             Gap(); Panel { Text("Chinese set lists aren't in the card database yet, so this shows the Chinese cards you own. Full lists will follow when a source is found.", color = p.muted, fontSize = 14.sp) }
@@ -229,6 +245,16 @@ private fun SetView(s: CardSet) {
             if (s.lang == "JA" && s.nameEn != s.name) Sub(s.nameEn)
             val date = s.date.takeIf { it.length >= 10 }?.let { runCatching { LocalDate.parse(it.take(10)).format(DateTimeFormatter.ofPattern("d MMM yyyy")) }.getOrNull() }
             Sub(listOfNotNull(date?.let { "Released $it" }, "${s.cards.size} cards" + if (s.total > 0 && s.total < s.cards.size) " (${s.total} + secret rares)" else "").joinToString(" · "))
+            Gap(10.dp)
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            ChipRow {
+                Chip("Binder pages", false) { if (AppState.store.binderMode(s.key).isEmpty()) AppState.store.setBinderMode(s.key, "base"); Nav.page = "binder:" + s.key }
+                Chip("Quick add", false) { Nav.page = "quick:" + s.key }
+                Chip("Share missing", false) {
+                    val mode = AppState.store.binderMode(s.key).ifEmpty { if (Nav.master) "master" else "base" }
+                    com.pokestock.data.ShareText.send(ctx, com.pokestock.data.ShareText.missing(s, mode), "Missing from ${s.name}")
+                }
+            }
             Gap()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Stat("$a/$b", "$unit owned", Modifier.weight(1f))

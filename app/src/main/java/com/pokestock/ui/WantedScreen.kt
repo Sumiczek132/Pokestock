@@ -40,7 +40,11 @@ fun WantedScreen() {
     fun cost(list: List<Int>) = list.sumOf { n -> slotWantsOpen(n).mapNotNull { AppState.lowPrice(it) }.minOrNull()?.toLong() ?: 0L }
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
-            Text("Wanted", style = Type.display, color = p.fg)
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Wanted", style = Type.display, color = p.fg, modifier = Modifier.weight(1f))
+                Btn("Share list") { com.pokestock.data.ShareText.send(ctx, com.pokestock.data.ShareText.wanted(), "My want list") }
+            }
             Sub("Check here before you buy. It works without signal.")
             SectionHead("Empty binder slots", "${empty.size} · from ${pounds(cost(empty))}")
             if (empty.isEmpty()) EmptyState("Open a missing slot in the Pokédex and tick the cards you would take.")

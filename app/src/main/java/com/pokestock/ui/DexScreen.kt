@@ -70,7 +70,10 @@ fun DexScreen() {
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(span = { GridItemSpan(3) }) {
             Column {
-                Text("Pokédex binder", style = Type.display, color = p.fg)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Pokédex binder", style = Type.display, color = p.fg, modifier = Modifier.weight(1f))
+                    Btn("Pages") { Nav.page = "dexbinder" }
+                }
                 Sub("$filled of ${Species.count} filled · $ups upgrades planned · binder worth ${pounds(worth)}")
                 Gap(10.dp)
                 ProgressBar(filled.toFloat() / Species.count)
