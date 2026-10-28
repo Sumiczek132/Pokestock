@@ -188,7 +188,7 @@ async function walk(root: string, lang: Lang) {
 await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
 console.log(`Cardmarket links checked: ${cmChecked}, corrected: ${cmFixed}`)
-const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size }, sets, cards }
+const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size, sample: [794946, 794947, 794286, 794316, 794317].map(id => [id, cmNames.get(id) || null, cmExp.get(id) || null]) }, sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
 const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])
