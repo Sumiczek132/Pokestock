@@ -9,6 +9,7 @@ const [, , dbDir, outFile, assetsFile] = process.argv
 if (!dbDir || !outFile) { console.error('usage: build-catalog <db dir> <out> [datas.json]'); process.exit(1) }
 
 const species: string[] = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data', 'species.json'), 'utf8'))
+const jaNames: Record<string, string> = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data', 'ja-set-names.json'), 'utf8'))
 let assets: any = null
 if (assetsFile && fs.existsSync(assetsFile)) assets = JSON.parse(fs.readFileSync(assetsFile, 'utf8'))
 
@@ -86,7 +87,7 @@ async function walk(root: string, lang: Lang) {
       rows.sort((a, b) => localSort(a.localId, b.localId))
       const si = sets.length
       sets.push({
-        k: `${lang}:${set.id}`, lang, id: set.id, name: setName, nameEn: set.name?.en || '',
+        k: `${lang}:${set.id}`, lang, id: set.id, name: lang === 'JA' && jaNames[set.id] ? jaNames[set.id] : setName, nameEn: set.name?.en || (lang === 'JA' ? setName : ''),
         series: lang === 'EN' ? (serie.name?.en || serie.id) : (serie.name?.ja || serie.id), serieId: serie.id,
         date, total: set.cardCount?.official || 0, abbr: set.abbreviations?.official || '', cm: set.thirdParty?.cardmarket || 0,
       })

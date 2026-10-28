@@ -114,17 +114,27 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
     private fun today() = LocalDate.now().toString()
 
     fun qty(cardKey: String, variant: String): Int = doc.items["$cardKey|$variant"]?.q ?: 0
-    fun slabsOf(cardKey: String, variant: String? = null): List<Slab> =
-        doc.slabs.values.filter { !it.deleted && it.card == cardKey && (variant == null || it.variant == variant) }
+
+    private var ownIndex: HashMap<String, HashMap<String, Int>>? = null
+    private var slabIndex: HashMap<String, MutableList<Slab>>? = null
+    private fun buildIndex() {
+        val o = HashMap<String, HashMap<String, Int>>()
+        for ((k, i) in doc.items) if (i.q > 0) o.getOrPut(k.substringBefore('|')) { HashMap() }[k.substringAfter('|')] = i.q
+        val s = HashMap<String, MutableList<Slab>>()
+        for (x in doc.slabs.values) if (!x.deleted) s.getOrPut(x.card) { ArrayList() }.add(x)
+        ownIndex = o; slabIndex = s
+    }
+    /** Raw copies you own of each version of a card. */
+    fun ownedVariants(cardKey: String): Map<String, Int> { if (ownIndex == null) buildIndex(); return ownIndex!![cardKey] ?: emptyMap() }
+    fun slabsOf(cardKey: String, variant: String? = null): List<Slab> {
+        if (slabIndex == null) buildIndex()
+        val l = slabIndex!![cardKey] ?: return emptyList()
+        return if (variant == null) l else l.filter { it.variant == variant }
+    }
     fun allSlabs(): List<Slab> = doc.slabs.values.filter { !it.deleted }
 
     /** Raw copies plus slabs, all versions. */
-    fun total(card: Card): Int {
-        var n = 0
-        for (v in card.variants) n += qty(card.key, v.key)
-        n += allSlabs().count { it.card == card.key }
-        return n
-    }
+    fun total(cardKey: String): Int = ownedVariants(cardKey).values.sum() + slabsOf(cardKey).size
 
     fun setQty(cardKey: String, variant: String, q: Int) {
         val k = "$cardKey|$variant"
@@ -178,6 +188,7 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
     fun addCustom(c: CustomCard) { doc.custom[c.id] = c; changed() }
 
     fun mergeIn(other: CollectionDoc): Int { val n = doc.merge(other); if (n > 0) changed(); return n }
+    fun invalidate() { ownIndex = null; slabIndex = null }
 
     fun exportJson(): String = doc.toJson().toString()
 
@@ -187,5 +198,5 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
         tmp.renameTo(file)
     }
 
-    private fun changed() { save(); onChange() }
+    private fun changed() { ownIndex = null; slabIndex = null; save(); onChange() }
 }
