@@ -1,5 +1,9 @@
 package com.pokestock.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -91,9 +95,9 @@ fun PortfolioScreen() {
             val ts = remember(v) { AppState.store.tradeSlabs() }
             val tv = tr.sumOf { (k, q) -> AppState.catalog.byKey[k.substringBefore('|')]?.let { (AppState.unitPrice(it, k.substringAfter('|')) ?: 0).toLong() * q } ?: 0L } + ts.sumOf { maxOf(0, it.price).toLong() }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NavCard(androidx.compose.material.icons.Icons.Outlined.SwapHoriz, "Trade binder", "${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)} · tap to trade") { Nav.page = "trade" }
-                NavCard(androidx.compose.material.icons.Icons.Outlined.ContentCopy, "Duplicates", "Spare copies worth putting in the trade binder") { Nav.page = "dupes" }
-                NavCard(androidx.compose.material.icons.Icons.Outlined.TrendingUp, "Top 100", "Your most valuable cards, what's going up and down") { Nav.page = "top" }
+                NavCard(Icons.Outlined.SwapHoriz, "Trade binder", "${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)} · tap to trade") { Nav.page = "trade" }
+                NavCard(Icons.Outlined.ContentCopy, "Duplicates", "Spare copies worth putting in the trade binder") { Nav.page = "dupes" }
+                NavCard(Icons.Outlined.TrendingUp, "Top 100", "Your most valuable cards, what's going up and down") { Nav.page = "top" }
             }
             SectionHead("Most valuable")
         }

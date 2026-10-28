@@ -1,5 +1,10 @@
 package com.pokestock.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -147,7 +152,7 @@ private fun SetList() {
         }
         if (q.isEmpty()) item {
             Gap(14.dp)
-            NavCard(androidx.compose.material.icons.Icons.Outlined.WorkspacePremium, "Graded slabs", "${slabs.size} slabs · " + pounds(slabs.sumOf { maxOf(0, it.price).toLong() })) { Nav.openSet = "slabs" }
+            NavCard(Icons.Outlined.WorkspacePremium, "Graded slabs", "${slabs.size} slabs · " + pounds(slabs.sumOf { maxOf(0, it.price).toLong() })) { Nav.openSet = "slabs" }
         }
         if (lang == "ZH") item {
             Gap(); Panel { Text("Chinese set lists aren't in the card database yet, so this shows the Chinese cards you own. Full lists will follow when a source is found.", color = p.muted, fontSize = 14.sp) }
@@ -256,11 +261,11 @@ private fun SetView(s: CardSet) {
             Gap(10.dp)
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionButton(androidx.compose.material.icons.Icons.Outlined.GridView, "Binder pages", Modifier.weight(1f)) {
+                ActionButton(Icons.Outlined.GridView, "Binder pages", Modifier.weight(1f)) {
                     if (AppState.store.binderMode(s.key).isEmpty()) AppState.store.setBinderMode(s.key, "base"); Nav.page = "binder:" + s.key
                 }
-                ActionButton(androidx.compose.material.icons.Icons.Outlined.Bolt, "Quick add", Modifier.weight(1f)) { Nav.page = "quick:" + s.key }
-                ActionButton(androidx.compose.material.icons.Icons.Outlined.IosShare, "Share missing", Modifier.weight(1f)) {
+                ActionButton(Icons.Outlined.Bolt, "Quick add", Modifier.weight(1f)) { Nav.page = "quick:" + s.key }
+                ActionButton(Icons.Outlined.IosShare, "Share missing", Modifier.weight(1f)) {
                     Nav.share = ShareRequest("Missing from ${s.name}", ShareLists.missing(s, AppState.store.binderMode(s.key).ifEmpty { if (Nav.master) "master" else "base" }))
                 }
             }
