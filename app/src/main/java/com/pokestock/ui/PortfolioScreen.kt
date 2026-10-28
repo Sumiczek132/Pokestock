@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -83,12 +84,28 @@ fun PortfolioScreen() {
             }
             Gap(8.dp)
             Sub("${String.format("%,d", data.byLang["EN"] ?: 0)} English · ${data.byLang["JA"] ?: 0} Japanese · ${data.byLang["ZH"] ?: 0} Chinese")
+            Gap(12.dp)
+            val tr = remember(v) { AppState.store.tradeRaw() }
+            val ts = remember(v) { AppState.store.tradeSlabs() }
+            val tv = tr.sumOf { (k, q) -> AppState.catalog.byKey[k.substringBefore('|')]?.let { (AppState.unitPrice(it, k.substringAfter('|')) ?: 0).toLong() * q } ?: 0L } + ts.sumOf { maxOf(0, it.price).toLong() }
+            Panel(Modifier.clickable { Nav.page = "trade" }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Trade binder", fontWeight = FontWeight.Bold, color = p.fg)
+                        Sub("${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)}")
+                    }
+                    Text("Trade now ›", color = p.want, fontWeight = FontWeight.SemiBold)
+                }
+            }
             SectionHead("Most valuable")
         }
         items(data.top, key = { "t" + it.first.card.key + it.first.variant }) { (h, pr) ->
             HoldingRow(h.card, h.variant, h.qty, pr.takeIf { it > 0 }, Labels.variantLabel(h.card, h.variant))
         }
-        item { SectionHead("Recently added") }
+        item {
+            Btn("View top 100", Modifier.fillMaxWidth().padding(top = 8.dp)) { Nav.page = "top" }
+            SectionHead("Recently added")
+        }
         items(data.recent, key = { "r" + it.card.key + it.variant }) { h ->
             HoldingRow(h.card, h.variant, h.qty, AppState.unitPrice(h.card, h.variant), Labels.variantLabel(h.card, h.variant))
         }

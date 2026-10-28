@@ -35,6 +35,9 @@ class CollectionDoc {
     val wish = HashMap<String, Stamped<Boolean>>()      // cardKey
     val overrides = HashMap<String, Stamped<Int>>()     // "cardKey|variant" -> pence, -1 = removed
     val custom = HashMap<String, CustomCard>()
+    val trade = HashMap<String, Stamped<Int>>()          // "cardKey|variant" -> copies in the trade binder
+    val tradeSlab = HashMap<String, Stamped<Boolean>>()  // slab id -> in the trade binder
+    val trades = HashMap<String, Stamped<String>>()      // trade id -> record (JSON text)
 
     fun toJson(): JSONObject {
         val o = JSONObject()
@@ -50,6 +53,9 @@ class CollectionDoc {
         o.put("slot", JSONObject().apply { slotWants.forEach { (k, s) -> put(k, JSONArray().put(if (s.v) 1 else 0).put(s.t)) } })
         o.put("wish", JSONObject().apply { wish.forEach { (k, s) -> put(k, JSONArray().put(if (s.v) 1 else 0).put(s.t)) } })
         o.put("ovr", JSONObject().apply { overrides.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
+        o.put("trade", JSONObject().apply { trade.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
+        o.put("tradeSlab", JSONObject().apply { tradeSlab.forEach { (k, s) -> put(k, JSONArray().put(if (s.v) 1 else 0).put(s.t)) } })
+        o.put("trades", JSONObject().apply { trades.forEach { (k, s) -> put(k, JSONArray().put(s.v).put(s.t)) } })
         o.put("custom", JSONObject().apply {
             custom.forEach { (k, c) ->
                 put(k, JSONObject().put("lang", c.lang).put("set", c.set).put("num", c.number).put("name", c.name)
@@ -71,6 +77,9 @@ class CollectionDoc {
         take(wish, other.wish) { it.t }
         take(overrides, other.overrides) { it.t }
         take(custom, other.custom) { it.t }
+        take(trade, other.trade) { it.t }
+        take(tradeSlab, other.tradeSlab) { it.t }
+        take(trades, other.trades) { it.t }
         other.binder.forEach { (k, v) -> val m = binder[k]; if (m == null || v.t > m.t) { binder[k] = v; n++ } }
         return n
     }
@@ -91,6 +100,9 @@ class CollectionDoc {
             o.optJSONObject("slot")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.slotWants[k] = Stamped(a.getInt(0) == 1, a.getLong(1)) } }
             o.optJSONObject("wish")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.wish[k] = Stamped(a.getInt(0) == 1, a.getLong(1)) } }
             o.optJSONObject("ovr")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.overrides[k] = Stamped(a.getInt(0), a.getLong(1)) } }
+            o.optJSONObject("trade")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.trade[k] = Stamped(a.getInt(0), a.getLong(1)) } }
+            o.optJSONObject("tradeSlab")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.tradeSlab[k] = Stamped(a.getInt(0) == 1, a.getLong(1)) } }
+            o.optJSONObject("trades")?.let { j -> j.keys().forEach { k -> val a = j.getJSONArray(k); d.trades[k] = Stamped(a.getString(0), a.getLong(1)) } }
             o.optJSONObject("custom")?.let { j ->
                 j.keys().forEach { k ->
                     val c = j.getJSONObject(k)
@@ -186,6 +198,41 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
     fun setOverride(cardKey: String, variant: String, pence: Int?) { doc.overrides["$cardKey|$variant"] = Stamped(pence ?: -1, now()); changed() }
 
     fun addCustom(c: CustomCard) { doc.custom[c.id] = c; changed() }
+
+    // ---------- trade binder ----------
+    /** Copies of a version in the trade binder (never more than you own raw). */
+    fun tradeQty(cardKey: String, variant: String): Int = minOf(doc.trade["$cardKey|$variant"]?.v ?: 0, qty(cardKey, variant))
+    fun setTradeQty(cardKey: String, variant: String, q: Int) { doc.trade["$cardKey|$variant"] = Stamped(maxOf(0, q), now()); changed() }
+    fun isTradeSlab(id: String) = doc.tradeSlab[id]?.v == true && doc.slabs[id]?.deleted == false
+    fun setTradeSlab(id: String, on: Boolean) { doc.tradeSlab[id] = Stamped(on, now()); changed() }
+    /** Everything in the trade binder: ("cardKey|variant", copies) for raw cards. */
+    fun tradeRaw(): List<Pair<String, Int>> = doc.trade.keys.mapNotNull { k ->
+        val q = tradeQty(k.substringBefore('|'), k.substringAfter('|')); if (q > 0) k to q else null
+    }
+    fun tradeSlabs(): List<Slab> = allSlabs().filter { isTradeSlab(it.id) }
+
+    /**
+     * Completes a trade: removes the cards you gave (raw copies and slabs), adds what you got,
+     * and keeps a record. Raw copies given also come out of the trade binder.
+     */
+    fun applyTrade(give: List<Pair<String, Int>>, giveSlabs: List<String>, get: List<Pair<String, Int>>, record: JSONObject) {
+        val t = now()
+        for ((k, n) in give) {
+            val card = k.substringBefore('|'); val v = k.substringAfter('|')
+            val have = qty(card, v)
+            doc.items[k] = Item(maxOf(0, have - n), doc.items[k]?.added ?: today(), t)
+            val inBinder = doc.trade[k]?.v ?: 0
+            doc.trade[k] = Stamped(maxOf(0, inBinder - n), t)
+        }
+        for (id in giveSlabs) doc.slabs[id]?.let { doc.slabs[id] = it.copy(deleted = true, t = t); doc.tradeSlab[id] = Stamped(false, t) }
+        for ((k, n) in get) {
+            val old = doc.items[k]
+            doc.items[k] = Item((old?.q ?: 0) + n, old?.added?.takeIf { it.isNotEmpty() } ?: today(), t)
+        }
+        val id = "t" + t.toString(36)
+        doc.trades[id] = Stamped(record.toString(), t)
+        changed()
+    }
 
     fun mergeIn(other: CollectionDoc): Int { val n = doc.merge(other); if (n > 0) changed(); return n }
     fun invalidate() { ownIndex = null; slabIndex = null }

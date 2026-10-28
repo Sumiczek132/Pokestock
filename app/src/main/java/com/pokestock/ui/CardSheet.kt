@@ -155,6 +155,18 @@ fun CardSheet(key: String) {
                 Stepper(raw, { AppState.store.setQty(card.key, k, raw - 1) }, { AppState.store.setQty(card.key, k, raw + 1) })
             }
         }
+        if (raw > 0) {
+            val inTrade = AppState.store.tradeQty(card.key, k)
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("In trade binder", fontWeight = FontWeight.SemiBold, color = p.fg)
+                        Sub(if (inTrade > 0) "$inTrade of $raw up for trade" else "Not up for trade")
+                    }
+                    Stepper(inTrade, { AppState.store.setTradeQty(card.key, k, inTrade - 1) }, { if (inTrade < raw) AppState.store.setTradeQty(card.key, k, inTrade + 1) })
+                }
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Btn(if (online) "eBay sold" else "eBay needs signal", Modifier.weight(1f), enabled = online) {
@@ -287,6 +299,8 @@ private fun SlabBox(card: Card, s: Slab, online: Boolean) {
                 }
                 Btn("Back to raw", Modifier.weight(1f)) { AppState.store.crack(s.id); say("Moved back to raw copies") }
             }
+            val tradeOn = AppState.store.isTradeSlab(s.id)
+            Btn(if (tradeOn) "In trade binder ✓" else "Put in trade binder", Modifier.fillMaxWidth()) { AppState.store.setTradeSlab(s.id, !tradeOn) }
         }
     }
 }

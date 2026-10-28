@@ -161,6 +161,22 @@ object AppState {
         return ks
     }
 
+    /**
+     * Price change of one version over the last [days] days, as a fraction (0.12 = +12%).
+     * Uses the app's own daily history when it reaches back far enough, otherwise Cardmarket's rolling averages.
+     */
+    fun change(card: Card, variant: String, days: Int): Double? {
+        if (store.override(card.key, variant) != null) return null
+        val now = prices.market(card, variant)?.toDouble() ?: return null
+        val since = java.time.LocalDate.now().minusDays(days.toLong()).toString()
+        val hist = history.series(card, variant)
+        val then = hist.lastOrNull { it.first <= since }?.second?.toDouble()
+            ?: prices.averages(card, variant).firstOrNull { it.first == days }?.second?.toDouble()
+            ?: return null
+        if (then <= 0) return null
+        return (now - then) / then
+    }
+
     fun portfolioValue(): Long {
         var v = 0L
         for ((k, item) in store.doc.items) {

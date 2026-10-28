@@ -69,6 +69,7 @@ object Nav {
     var cardRange by mutableStateOf("3M")
     var addCustom by mutableStateOf(false)
     var fullImage by mutableStateOf<String?>(null)
+    var page by mutableStateOf<String?>(null)          // "top" or "trade", shown over the tabs
     var searchOwned by mutableStateOf("all")
     var ownedFirst by mutableStateOf(true)    // card key shown full screen
 
@@ -115,6 +116,9 @@ fun PokestockRoot(startOnSync: Boolean) {
             }
             BottomTabs()
         }
+        AnimatedVisibility(Nav.page != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
+            when (Nav.page) { "top" -> TopScreen(); "trade" -> TradeScreen(); else -> {} }
+        }
         AnimatedVisibility(Nav.slot != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             Nav.slot?.let { SlotSheet(it) }
         }
@@ -127,6 +131,10 @@ fun PokestockRoot(startOnSync: Boolean) {
         BackHandler(Nav.addCustom && Nav.card == null) { Nav.addCustom = false }
         BackHandler(Nav.card != null && Nav.fullImage == null) { Nav.card = null }
         BackHandler(Nav.card == null && Nav.slot != null) { Nav.slot = null }
+        BackHandler(Nav.card == null && Nav.slot == null && Nav.page != null) {
+            if (Nav.page == "trade" && TradeState.picking) TradeState.picking = false
+            else if (Nav.page == "trade" && TradeState.selecting) TradeState.reset() else Nav.page = null
+        }
         BackHandler(Nav.card == null && Nav.slot == null && Nav.tab == "collection" && Nav.openSet != null) { Nav.openSet = null }
     }
 }
