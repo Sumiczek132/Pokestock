@@ -50,7 +50,8 @@ class Prices(val date: String, private val map: HashMap<Int, IntArray>) {
                         "prices" -> {
                             r.beginObject()
                             while (r.hasNext()) {
-                                val id = r.nextName().toIntOrNull() ?: run { r.skipValue(); continue }
+                                val id = r.nextName().toIntOrNull()
+                                if (id == null) { r.skipValue(); continue }
                                 val a = IntArray(6)
                                 r.beginArray()
                                 var i = 0
@@ -114,7 +115,8 @@ class History(val days: List<String>, val weeks: List<String>, private val d: Ha
         private fun readSeries(r: JsonReader, into: HashMap<Int, Array<IntArray>>) {
             r.beginObject()
             while (r.hasNext()) {
-                val id = r.nextName().toIntOrNull() ?: run { r.skipValue(); continue }
+                val id = r.nextName().toIntOrNull()
+                if (id == null) { r.skipValue(); continue }
                 val cols = ArrayList<IntArray>(2)
                 r.beginArray()
                 while (r.hasNext()) {
