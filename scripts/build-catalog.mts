@@ -47,8 +47,8 @@ if (cmProductsFile && fs.existsSync(cmProductsFile)) {
     for (const p of (j.products || j)) if (p?.idProduct && p?.name) cmNames.set(p.idProduct, String(p.name))
   } catch (e) { console.error('Cardmarket product list unreadable', String(e).slice(0, 100)) }
 }
-// "Buddy-Buddy Poffin (M1S 081)" -> "Buddy-Buddy Poffin"; "Pikachu [Electric Ball]" kept as-is
-const cleanCm = (n: string) => n.replace(/\s*\((?=[^)]*\d)[^)]*\)\s*$/, '').replace(/\s*-\s*[A-Z0-9-]+\s*\d+\s*$/, '').trim()
+// "Buddy-Buddy Poffin (M1S 081)" -> "Buddy-Buddy Poffin"; "Lopunny [Dashing Kick | Spiral Kick]" -> "Lopunny"
+const cleanCm = (n: string) => n.replace(/\s*\[[^\]]*\]\s*$/, '').replace(/\s*\((?=[^)]*\d)[^)]*\)\s*$/, '').replace(/\s*-\s*[A-Z0-9-]+\s*\d+\s*$/, '').trim()
 let jaNamed = 0
 
 type Lang = 'EN' | 'JA'
