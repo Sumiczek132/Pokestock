@@ -100,7 +100,12 @@ private fun SetList() {
     val q = Nav.colQuery.trim()
     val sets = remember(cat, lang) { cat.sets.filter { it.lang == lang } }
     val stats = remember(v, prices, sets) { sets.associate { it.key to statsOf(it) } }
-    val hits = remember(cat, lang, q) { if (q.length >= 2) cat.search(lang, q, 300) else emptyList() }
+    val hits = remember(cat, lang, q) { if (q.length >= 2) cat.search(lang, q) else emptyList() }
+    val shown = remember(hits, v, Nav.searchOwned, Nav.ownedFirst) {
+        hits.filter { c -> val o = AppState.store.total(c.key) > 0; when (Nav.searchOwned) { "owned" -> o; "missing" -> !o; else -> true } }
+            .sortedWith(compareByDescending<Card> { Nav.ownedFirst && AppState.store.total(it.key) > 0 }.thenByDescending { AppState.displayPrice(it) ?: -1 })
+            .take(200)
+    }
     val slabs = remember(v) { AppState.store.allSlabs() }
 
     LazyColumn(state = Nav.setList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
@@ -113,8 +118,17 @@ private fun SetList() {
             if (cat.sets.isEmpty()) { Gap(); Panel { Text("The card list downloads the first time you're online. Open the Sync tab and tap Update.", color = p.muted) } }
         }
         if (q.length >= 2) {
-            item { SectionHead("Cards", "${hits.size}${if (hits.size >= 300) "+" else ""} found") }
-            items(hits.sortedWith(compareByDescending<Card> { AppState.store.total(it.key) > 0 }.thenByDescending { AppState.bestPrice(it) ?: -1 }).take(150), key = { "h" + it.key }) { CardRow(it) }
+            item {
+                SectionHead("Cards", "${shown.size}${if (shown.size >= 200) "+" else ""} shown")
+                ChipRow { listOf("all" to "All", "owned" to "Owned", "missing" to "Not owned").forEach { (k, l) -> Chip(l, Nav.searchOwned == k) { Nav.searchOwned = k } } }
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Switch(Nav.ownedFirst, { Nav.ownedFirst = it }, colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.onAccent))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Show cards I own first", color = p.muted, fontSize = 13.sp)
+                }
+                Sub("Tip: add a card number, e.g. \"pikachu 58\" or \"058/102\".")
+            }
+            items(shown, key = { "h" + it.key }) { CardRow(it) }
         }
         if (q.isEmpty()) item {
             SectionHead("Graded")
@@ -276,7 +290,7 @@ private fun SetCardRow(c: Card) {
             }
             Spacer(Modifier.width(6.dp))
             Column(horizontalAlignment = Alignment.End) {
-                PriceText(AppState.bestPrice(c))
+                PriceText(AppState.displayPrice(c))
                 if (total == 0 && (wish || (c.dex > 0 && AppState.store.isSlotWant(c.dex, c.key)))) { Gap(4.dp); Badge("Wanted", "want") }
             }
         }

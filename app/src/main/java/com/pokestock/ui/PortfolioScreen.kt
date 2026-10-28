@@ -1,5 +1,6 @@
 package com.pokestock.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,6 +57,11 @@ fun PortfolioScreen() {
 
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
+            if (com.pokestock.data.AppUpdate.available != null) {
+                Panel(Modifier.padding(bottom = 12.dp).clickable { Nav.tab = "more" }) {
+                    Text("${com.pokestock.data.AppUpdate.available} is ready. Tap to update.", color = p.fg, fontWeight = FontWeight.SemiBold)
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Label("Collection value")
                 Text(pounds(data.total), style = Type.value, color = p.fg)

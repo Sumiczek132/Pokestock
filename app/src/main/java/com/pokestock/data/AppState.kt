@@ -87,7 +87,7 @@ object AppState {
                     save("catalog.json.gz", download(Data.BASE + "catalog.json.gz"))
                     prefs.edit().putString("catalogBuilt", built).apply(); changed = true
                 }
-                val pd = manifest.optString("pricesDate")
+                val pd = manifest.optString("pricesBuilt").ifEmpty { manifest.optString("pricesDate") }
                 if (force || pd != prefs.getString("pricesDate", "") || !File(dir, "prices.json.gz").exists()) {
                     status = "Downloading prices…"
                     save("prices.json.gz", download(Data.BASE + "prices.json.gz"))
@@ -145,6 +145,12 @@ object AppState {
 
     /** Highest known price across a card's versions. */
     fun bestPrice(card: Card): Int? = versionsOf(card).mapNotNull { unitPrice(card, it) }.maxOrNull()
+    /** The price to show in lists: what your own copies are worth if you own it, otherwise the highest version. */
+    fun displayPrice(card: Card): Int? {
+        val owned = store.ownedVariants(card.key).keys + store.slabsOf(card.key).map { it.variant }
+        if (owned.isNotEmpty()) owned.mapNotNull { unitPrice(card, it) }.maxOrNull()?.let { return it }
+        return bestPrice(card)
+    }
     fun lowPrice(card: Card): Int? = versionsOf(card).mapNotNull { unitPrice(card, it) }.minOrNull()
 
     /** The card's versions plus any version you own that the list doesn't have. */

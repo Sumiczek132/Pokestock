@@ -30,6 +30,8 @@ jobs:
         run: git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/cards-database
       - name: Get second picture source
         run: git clone --depth 1 https://github.com/PokemonTCG/pokemon-tcg-data.git /tmp/ptcg
+      - name: Get Cardmarket product names
+        run: curl -fsSL https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_6.json -o /tmp/cm-products.json || echo '{}' > /tmp/cm-products.json
       - name: Get picture index
         run: curl -fsSL https://assets.tcgdex.net/datas.json -o /tmp/datas.json || echo '{}' > /tmp/datas.json
       - name: Get yesterday's history
@@ -39,7 +41,7 @@ jobs:
             git show origin/data:history.json.gz > /tmp/history-prev.json.gz && gunzip -f /tmp/history-prev.json.gz || true
           fi
       - name: Build catalogue
-        run: npx tsx scripts/build-catalog.mts /tmp/cards-database /tmp/catalog.json /tmp/datas.json /tmp/ptcg
+        run: npx tsx scripts/build-catalog.mts /tmp/cards-database /tmp/catalog.json /tmp/datas.json /tmp/ptcg /tmp/cm-products.json
       - name: Build prices and history
         run: node scripts/build-prices.mjs /tmp/catalog.json /tmp/prices.json /tmp/history-prev.json /tmp/history.json
       - name: Publish to the data branch
@@ -53,7 +55,7 @@ jobs:
           node -e "
             const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/catalog.json'));
             const size=f=>fs.statSync(f).size;
-            fs.writeFileSync('manifest.json',JSON.stringify({v:1,catalogBuilt:c.built,sets:c.sets.length,cards:c.cards.length,pricesDate:'$DATE',
+            fs.writeFileSync('manifest.json',JSON.stringify({v:1,catalogBuilt:c.built,sets:c.sets.length,cards:c.cards.length,pricesDate:'$DATE',pricesBuilt:new Date().toISOString(),
               sizes:{catalog:size('catalog.json.gz'),prices:size('prices.json.gz'),history:size('history.json.gz')}}))"
           git init -q -b data
           git config user.name "pokestock-bot"

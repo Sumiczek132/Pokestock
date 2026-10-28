@@ -46,7 +46,7 @@ fun CardRow(card: Card, onClick: () -> Unit = { Nav.openCard(card.key) }) {
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            PriceText(AppState.bestPrice(card))
+            PriceText(AppState.displayPrice(card))
             when {
                 owned > 0 -> Badge("×$owned")
                 wanted -> Badge("Wanted", "want")

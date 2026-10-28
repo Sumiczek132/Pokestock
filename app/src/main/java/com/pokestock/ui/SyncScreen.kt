@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pokestock.data.AppState
+import com.pokestock.data.AppUpdate
 import com.pokestock.data.CollectionDoc
 import com.pokestock.data.Data
 import com.pokestock.data.DriveSync
@@ -55,10 +56,9 @@ fun SyncScreen() {
     var morning by remember { mutableStateOf(prefs.getBoolean("morningUpdate", true)) }
     var stale by remember { mutableStateOf(prefs.getBoolean("staleNotify", true)) }
     var driveUri by remember { mutableStateOf(DriveSync.fileUri(ctx)) }
-    var newBuild by remember { mutableStateOf<String?>(null) }
     @Suppress("UNUSED_VARIABLE") val v = AppState.version
 
-    LaunchedEffect(Unit) { newBuild = checkForAppUpdate(ctx) }
+    LaunchedEffect(Unit) { AppUpdate.check(ctx) }
 
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(Unit) { if (Build.VERSION.SDK_INT >= 33) notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS) }
@@ -92,13 +92,17 @@ fun SyncScreen() {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
         Text("Sync & prices", style = Type.display, color = p.fg)
 
-        if (newBuild != null) {
+        if (AppUpdate.available != null) {
             Gap()
             Panel {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("A new version of Pokestock is ready", fontWeight = FontWeight.Bold, color = p.fg)
-                    Sub("Download Pokestock.apk from the page that opens and install it over this one. Your collection stays.")
-                    Btn("Get $newBuild", Modifier.fillMaxWidth(), primary = true) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Data.RELEASES))) }
+                    Text("${AppUpdate.available} is ready", fontWeight = FontWeight.Bold, color = p.fg)
+                    Sub("It downloads here and Android asks you to confirm the install. Your collection stays.")
+                    AppUpdate.progress?.let { ProgressBar(it) }
+                    if (AppUpdate.error.isNotEmpty()) Sub(AppUpdate.error, color = p.down)
+                    Btn(if (AppUpdate.progress != null) "Downloading…" else "Update now", Modifier.fillMaxWidth(), primary = true, enabled = AppUpdate.progress == null) {
+                        scope.launch { AppUpdate.downloadAndInstall(ctx) }
+                    }
                 }
             }
         }
@@ -201,14 +205,3 @@ private fun nearbyPermissions(): Array<String> = buildList {
 
 fun appVersion(ctx: Context): String = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: ""
 
-private fun appBuild(ctx: Context): Long = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode }.getOrDefault(0L)
-
-/** Asks GitHub for the newest build. Returns its name if it's newer than this one. */
-private suspend fun checkForAppUpdate(ctx: Context): String? = withContext(Dispatchers.IO) {
-    runCatching {
-        val json = JSONObject(String(AppState.download("https://api.github.com/repos/Sumiczek132/Pokestock/releases/latest")))
-        val tag = json.optString("tag_name") // build-N
-        val n = tag.removePrefix("build-").toLongOrNull() ?: return@runCatching null
-        if (n > appBuild(ctx)) json.optString("name", tag) else null
-    }.getOrNull()
-}

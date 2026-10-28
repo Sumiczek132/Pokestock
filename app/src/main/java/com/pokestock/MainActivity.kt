@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
             // First run, or prices older than today: try an update straight away (silently does nothing offline).
             val age = AppState.priceAgeDays()
             if (AppState.catalog.sets.isEmpty() || age == null || age >= 1) AppState.update(applicationContext)
+            com.pokestock.data.AppUpdate.check(applicationContext)
         }
         setContent { PokestockTheme { PokestockRoot(startOnSync = openSync) } }
     }

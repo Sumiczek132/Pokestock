@@ -68,7 +68,9 @@ object Nav {
     var range by mutableStateOf("1Y")
     var cardRange by mutableStateOf("3M")
     var addCustom by mutableStateOf(false)
-    var fullImage by mutableStateOf<String?>(null)    // card key shown full screen
+    var fullImage by mutableStateOf<String?>(null)
+    var searchOwned by mutableStateOf("all")
+    var ownedFirst by mutableStateOf(true)    // card key shown full screen
 
     // Scroll positions, kept so going back returns to the same place.
     val setList = androidx.compose.foundation.lazy.LazyListState()

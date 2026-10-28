@@ -31,6 +31,7 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
     override suspend fun doWork(): Result {
         AppState.update(applicationContext)
         if (com.pokestock.data.DriveSync.fileUri(applicationContext) != null) com.pokestock.data.DriveSync.sync(applicationContext)
+        com.pokestock.data.AppUpdate.check(applicationContext)?.let { Schedule.notify(applicationContext, "$it is ready", "Open Pokestock and tap Update now.") }
         return Result.success()
     }
 }

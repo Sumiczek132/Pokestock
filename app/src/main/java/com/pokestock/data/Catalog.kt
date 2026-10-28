@@ -94,17 +94,29 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
         index(c)
     }
 
-    fun search(lang: String, query: String, limit: Int = 400): List<Card> {
+    /**
+     * Words match the name, set or abbreviation. A number like "58" or "058/102" matches the card number
+     * (the part before the slash); a plain number also matches the Pokédex number.
+     */
+    fun search(lang: String, query: String, limit: Int = 600): List<Card> {
         val words = query.lowercase().trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.isEmpty()) return emptyList()
+        val numRe = Regex("^#?([a-z]{0,4})0*(\\d+)(/[a-z]{0,4}\\d+)?$")
         val out = ArrayList<Card>()
         for (s in sets) {
             if (s.lang != lang) continue
             for (c in s.cards) {
-                if (words.all { w -> c.search.contains(w) || (c.dex > 0 && w == c.dex.toString()) }) {
-                    out.add(c)
-                    if (out.size >= limit) return out
+                val ok = words.all { w ->
+                    val m = numRe.matchEntire(w)
+                    if (m != null) {
+                        val prefix = m.groupValues[1]; val n = m.groupValues[2]; val slash = m.groupValues[3].isNotEmpty()
+                        val local = c.localId.lowercase().substringBefore('/')
+                        val lm = Regex("^([a-z]*)0*(\\d+)").find(local)
+                        val numberHit = lm != null && lm.groupValues[1] == prefix && lm.groupValues[2] == n
+                        numberHit || (!slash && prefix.isEmpty() && (c.dex.toString() == n || c.search.contains(w)))
+                    } else c.search.contains(w)
                 }
+                if (ok) { out.add(c); if (out.size >= limit) return out }
             }
         }
         return out

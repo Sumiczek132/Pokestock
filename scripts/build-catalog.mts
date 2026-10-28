@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const [, , dbDir, outFile, assetsFile, ptcgDir] = process.argv
+const [, , dbDir, outFile, assetsFile, ptcgDir, cmProductsFile] = process.argv
 if (!dbDir || !outFile) { console.error('usage: build-catalog <db dir> <out> [datas.json]'); process.exit(1) }
 
 const species: string[] = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data', 'species.json'), 'utf8'))
@@ -38,6 +38,18 @@ function ptcgImages(setId: string): Map<string, [string, string]> {
   }
   return m
 }
+
+// Cardmarket's product list gives English names for Japanese cards (trainers, items, named Pokémon).
+const cmNames = new Map<number, string>()
+if (cmProductsFile && fs.existsSync(cmProductsFile)) {
+  try {
+    const j = JSON.parse(fs.readFileSync(cmProductsFile, 'utf8'))
+    for (const p of (j.products || j)) if (p?.idProduct && p?.name) cmNames.set(p.idProduct, String(p.name))
+  } catch (e) { console.error('Cardmarket product list unreadable', String(e).slice(0, 100)) }
+}
+// "Buddy-Buddy Poffin (M1S 081)" -> "Buddy-Buddy Poffin"; "Pikachu [Electric Ball]" kept as-is
+const cleanCm = (n: string) => n.replace(/\s*\((?=[^)]*\d)[^)]*\)\s*$/, '').replace(/\s*-\s*[A-Z0-9-]+\s*\d+\s*$/, '').trim()
+let jaNamed = 0
 
 type Lang = 'EN' | 'JA'
 const sets: any[] = []
@@ -90,6 +102,9 @@ async function walk(root: string, lang: Lang) {
         let name = native
         if (lang === 'JA') {
           name = dex >= 1 && dex <= species.length ? species[dex - 1] + (/ex$/i.test(native) ? ' ex' : '') : native
+          const cmId = (Array.isArray(c.variants) ? c.variants.find((v: any) => v?.thirdParty?.cardmarket)?.thirdParty?.cardmarket : 0) || c.thirdParty?.cardmarket
+          const en = cmId ? cmNames.get(cmId) : undefined
+          if (en && /[A-Za-z]/.test(en)) { name = cleanCm(en) || name; jaNamed++ }
         }
         const vs: [string, number][] = []
         const seen = new Set<string>()
@@ -135,6 +150,9 @@ await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
 const out = { v: 1, built: new Date().toISOString(), sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
+console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
+const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])
+console.log('sample:', sample.join(' | '))
 const pics = cards.filter(c => c[8] === 1).length, alt = cards.filter(c => Array.isArray(c[8])).length
 console.log(`pictures: ${pics} TCGdex, ${alt} pokemontcg.io, ${cards.length - pics - alt} none`)
 console.log(`${sets.length} sets, ${cards.length} cards (${sets.filter(s => s.lang === 'EN').length} EN sets, ${sets.filter(s => s.lang === 'JA').length} JA sets)`)
