@@ -66,7 +66,7 @@ fun DexScreen() {
             ok && (q.isEmpty() || Species.name(n).lowercase().contains(q) || n.toString() == q.trimStart('0'))
         }
     }
-    LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+    LazyVerticalGrid(GridCells.Fixed(3), state = Nav.dexGrid, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(span = { GridItemSpan(3) }) {
             Column {
@@ -90,6 +90,7 @@ fun DexScreen() {
 
 @Composable
 private fun SlotTile(n: Int) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val p = P
     val card = AppState.store.binderCard(n)?.let { AppState.catalog.byKey[it] }
     val wants = slotWantsOpen(n).size
@@ -165,6 +166,7 @@ fun SlotSheet(n: Int) {
 
 @Composable
 private fun OptionRow(c: Card, selected: Boolean, radio: Boolean, onClick: () -> Unit) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val p = P
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (radio) RadioButton(selected, onClick, colors = RadioButtonDefaults.colors(selectedColor = p.accent))
@@ -175,6 +177,10 @@ private fun OptionRow(c: Card, selected: Boolean, radio: Boolean, onClick: () ->
             Text(c.name, fontWeight = FontWeight.SemiBold, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Sub("${c.set.name} · ${Labels.rarityShort(c.rarity).ifEmpty { "—" }} · ${c.set.lang}", maxLines = 1)
         }
-        PriceText(AppState.lowPrice(c))
+        Column(horizontalAlignment = Alignment.End) {
+            PriceText(AppState.lowPrice(c))
+            Text("Open", color = p.want, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { Nav.openCard(c.key) }.padding(horizontal = 8.dp, vertical = 6.dp))
+        }
     }
 }

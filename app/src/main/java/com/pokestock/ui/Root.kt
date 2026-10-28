@@ -68,6 +68,19 @@ object Nav {
     var range by mutableStateOf("1Y")
     var cardRange by mutableStateOf("3M")
     var addCustom by mutableStateOf(false)
+    var fullImage by mutableStateOf<String?>(null)    // card key shown full screen
+
+    // Scroll positions, kept so going back returns to the same place.
+    val setList = androidx.compose.foundation.lazy.LazyListState()
+    val dexGrid = androidx.compose.foundation.lazy.grid.LazyGridState()
+    private val setViews = HashMap<String, androidx.compose.foundation.lazy.LazyListState>()
+    fun setViewState(key: String) = setViews.getOrPut(key) { androidx.compose.foundation.lazy.LazyListState() }
+
+    /** Jump to a set's page in the Collection tab from anywhere. */
+    fun goToSet(setKey: String, lang: String) {
+        card = null; slot = null; this.lang = lang; tab = "collection"
+        setFilter = "all"; setGroup = "all"; openSet = setKey
+    }
 
     fun openCard(key: String, variant: String? = null) { card = key; cardVariant = variant }
 }
@@ -107,8 +120,10 @@ fun PokestockRoot(startOnSync: Boolean) {
             Nav.card?.let { CardSheet(it) }
         }
         AnimatedVisibility(Nav.addCustom, enter = slideInVertically { it }, exit = slideOutVertically { it }) { AddCustomSheet() }
+        if (Nav.fullImage != null) FullImage(Nav.fullImage!!)
+        BackHandler(Nav.fullImage != null) { Nav.fullImage = null }
         BackHandler(Nav.addCustom && Nav.card == null) { Nav.addCustom = false }
-        BackHandler(Nav.card != null) { Nav.card = null }
+        BackHandler(Nav.card != null && Nav.fullImage == null) { Nav.card = null }
         BackHandler(Nav.card == null && Nav.slot != null) { Nav.slot = null }
         BackHandler(Nav.card == null && Nav.slot == null && Nav.tab == "collection" && Nav.openSet != null) { Nav.openSet = null }
     }

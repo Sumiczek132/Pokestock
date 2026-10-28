@@ -35,6 +35,20 @@ class Prices(val date: String, private val map: HashMap<Int, IntArray>) {
 
     private fun firstPositive(vararg xs: Int): Int? = xs.firstOrNull { it > 0 }
 
+    /**
+     * Cardmarket's own rolling averages for one version, oldest first: 30-day, 7-day, 1-day and today's trend.
+     * Used to draw a short trend before the app has collected its own daily history.
+     */
+    fun averages(card: Card, variantKey: String): List<Pair<Int, Int>> {
+        val v = card.variants.firstOrNull { it.key == variantKey } ?: return emptyList()
+        val p = map[v.cm] ?: return emptyList()
+        val rev = variantKey.startsWith("reverse")
+        val shared = card.variants.any { it.cm == v.cm && !it.key.startsWith("reverse") }
+        val holo = rev && (shared || p[3] > 0)
+        val pts = if (holo) listOf(30 to p[4], 7 to p[8], 1 to p[9], 0 to p[3]) else listOf(30 to p[1], 7 to p[6], 1 to p[7], 0 to p[0])
+        return pts.filter { it.second > 0 }
+    }
+
     companion object {
         fun empty() = Prices("", HashMap())
 
@@ -52,10 +66,10 @@ class Prices(val date: String, private val map: HashMap<Int, IntArray>) {
                             while (r.hasNext()) {
                                 val id = r.nextName().toIntOrNull()
                                 if (id == null) { r.skipValue(); continue }
-                                val a = IntArray(6)
+                                val a = IntArray(10)
                                 r.beginArray()
                                 var i = 0
-                                while (r.hasNext()) { val x = r.nextString().toDoubleOrNull()?.toInt() ?: 0; if (i < 6) a[i] = x; i++ }
+                                while (r.hasNext()) { val x = r.nextString().toDoubleOrNull()?.toInt() ?: 0; if (i < 10) a[i] = x; i++ }
                                 r.endArray()
                                 map[id] = a
                             }

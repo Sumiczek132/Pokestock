@@ -1,17 +1,43 @@
 // Builds the Pokestock card catalogue from a checkout of tcgdex/cards-database.
-// Usage: npx tsx scripts/build-catalog.mts <cards-database dir> <out.json> [datas.json]
+// Usage: npx tsx scripts/build-catalog.mts <cards-database dir> <out.json> [datas.json] [pokemon-tcg-data dir]
+// Pictures come from TCGdex; English cards TCGdex has no picture for fall back to pokemontcg.io.
 // Output is compact JSON the app loads into SQLite.
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const [, , dbDir, outFile, assetsFile] = process.argv
+const [, , dbDir, outFile, assetsFile, ptcgDir] = process.argv
 if (!dbDir || !outFile) { console.error('usage: build-catalog <db dir> <out> [datas.json]'); process.exit(1) }
 
 const species: string[] = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data', 'species.json'), 'utf8'))
 const jaNames: Record<string, string> = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data', 'ja-set-names.json'), 'utf8'))
 let assets: any = null
 if (assetsFile && fs.existsSync(assetsFile)) assets = JSON.parse(fs.readFileSync(assetsFile, 'utf8'))
+
+// Second picture source (English only): pokemontcg.io set and card data.
+const ptcgSets: any[] = ptcgDir && fs.existsSync(path.join(ptcgDir, 'sets', 'en.json')) ? JSON.parse(fs.readFileSync(path.join(ptcgDir, 'sets', 'en.json'), 'utf8')) : []
+const norm = (x: string) => x.toLowerCase().replace(/&/g, 'and').replace(/pokémon/g, 'pokemon').replace(/[^a-z0-9]/g, '')
+const ptcgByName = new Map(ptcgSets.map(s => [norm(s.name), s]))
+const ptcgById = new Map(ptcgSets.map(s => [s.id, s]))
+const PTCG_ALIAS: Record<string, string> = { '30th-c': 'me55c', '30th': 'me55', 'mee': 'mee', 'sve': 'sve' }
+function ptcgSetFor(id: string, name: string) {
+  const guess = id.replace('.', 'pt').replace(/^sv0(\d)/, 'sv$1').replace(/^me0(\d)/, 'me$1')
+  return ptcgById.get(PTCG_ALIAS[id] || '') || ptcgByName.get(norm(name)) || ptcgById.get(guess) || ptcgById.get(id)
+}
+const numKey = (n: string) => String(n).toUpperCase().replace(/^([A-Z]*)0*(\d)/, '$1$2')
+function ptcgImages(setId: string): Map<string, [string, string]> {
+  const m = new Map<string, [string, string]>()
+  const f = ptcgDir ? path.join(ptcgDir, 'cards', 'en', setId + '.json') : ''
+  if (!f || !fs.existsSync(f)) return m
+  for (const c of JSON.parse(fs.readFileSync(f, 'utf8'))) if (c.images?.small) {
+    const pics: [string, string] = [c.images.small, c.images.large || c.images.small]
+    m.set(numKey(c.number), pics)
+    // Also by name, for sets numbered differently in the two sources; a name seen twice can't be trusted.
+    const nk = 'name:' + norm(c.name)
+    m.set(nk, m.has(nk) ? ['', ''] : pics)
+  }
+  return m
+}
 
 type Lang = 'EN' | 'JA'
 const sets: any[] = []
@@ -41,6 +67,7 @@ async function walk(root: string, lang: Lang) {
     if (!fs.existsSync(serieDir)) continue
     let serie: any
     try { serie = await load(path.join(root, serieFile)) } catch (e) { console.error('serie', serieFile, e); continue }
+    if (serie.id === 'tcgp') continue // Pokémon TCG Pocket: digital only, not real cards
     for (const setFile of fs.readdirSync(serieDir).filter(f => f.endsWith('.ts'))) {
       const setDir = path.join(serieDir, setFile.slice(0, -3))
       if (!fs.existsSync(setDir)) continue
@@ -50,6 +77,8 @@ async function walk(root: string, lang: Lang) {
       if (!setName) continue // not released in this language
       const date = typeof set.releaseDate === 'string' ? set.releaseDate : (set.releaseDate?.[nameKey] || '')
       const files = fs.readdirSync(setDir).filter(f => f.endsWith('.ts'))
+      const pset = lang === 'EN' ? ptcgSetFor(set.id, setName) : undefined
+      const pimg = pset ? ptcgImages(pset.id) : new Map()
       const rows: any[] = []
       for (const cf of files) {
         let c: any
@@ -80,7 +109,11 @@ async function walk(root: string, lang: Lang) {
           const r = String(c.rarity || '')
           vs.push([/^(common|uncommon|none|)$/i.test(r) ? 'normal' : 'holo', c.thirdParty?.cardmarket || 0])
         }
-        const img = assets ? (assets[nameKey]?.[serie.id]?.[set.id]?.[localId] ? 1 : 0) : 1
+        let img: number | [string, string] = assets ? (assets[nameKey]?.[serie.id]?.[set.id]?.[localId] ? 1 : 0) : 1
+        if (img === 0 && pimg.size) {
+          const byNum = pimg.get(numKey(localId)), byName = pimg.get('name:' + norm(native))
+          img = (byNum && byName && byNum[0] !== byName[0] && byName[0]) ? byName : (byNum || (byName && byName[0] ? byName : 0))
+        }
         rows.push({ localId, name, rarity: c.rarity || '', dex, cat: c.category || '', vs, ja: lang === 'JA' && name !== native ? native : '', img })
       }
       if (!rows.length) continue
@@ -90,6 +123,8 @@ async function walk(root: string, lang: Lang) {
         k: `${lang}:${set.id}`, lang, id: set.id, name: lang === 'JA' && jaNames[set.id] ? jaNames[set.id] : setName, nameEn: set.name?.en || (lang === 'JA' ? setName : ''),
         series: lang === 'EN' ? (serie.name?.en || serie.id) : (serie.name?.ja || serie.id), serieId: serie.id,
         date, total: set.cardCount?.official || 0, abbr: set.abbreviations?.official || '', cm: set.thirdParty?.cardmarket || 0,
+        logo: pset?.images?.logo || (assets?.[nameKey]?.[serie.id]?.[set.id]?.logo ? `https://assets.tcgdex.net/${nameKey}/${serie.id}/${set.id}/logo.webp` : ''),
+        symbol: pset?.images?.symbol || (assets?.univ?.[serie.id]?.[set.id]?.symbol ? `https://assets.tcgdex.net/univ/${serie.id}/${set.id}/symbol.webp` : ''),
       })
       for (const r of rows) cards.push([si, r.localId, r.name, r.rarity, r.dex, r.cat, r.vs, r.ja, r.img])
     }
@@ -100,4 +135,6 @@ await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
 const out = { v: 1, built: new Date().toISOString(), sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
+const pics = cards.filter(c => c[8] === 1).length, alt = cards.filter(c => Array.isArray(c[8])).length
+console.log(`pictures: ${pics} TCGdex, ${alt} pokemontcg.io, ${cards.length - pics - alt} none`)
 console.log(`${sets.length} sets, ${cards.length} cards (${sets.filter(s => s.lang === 'EN').length} EN sets, ${sets.filter(s => s.lang === 'JA').length} JA sets)`)

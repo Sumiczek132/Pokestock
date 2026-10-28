@@ -19,6 +19,8 @@ data class CardSet(
     val total: Int,
     val abbr: String,
     val custom: Boolean = false,
+    val logo: String = "",
+    val symbol: String = "",
 ) {
     val cards = ArrayList<Card>()
 }
@@ -37,6 +39,8 @@ class Card(
     val nativeName: String,
     val hasImage: Boolean,
     val custom: Boolean = false,
+    /** Picture URLs from the second source (small, large), used when TCGdex has none. */
+    val altImage: Array<String>? = null,
 ) {
     val search: String = (name + " " + nativeName + " " + localId + " " + set.name + " " + set.abbr).lowercase()
 
@@ -46,7 +50,9 @@ class Card(
             localId.padStart(3, '0') + "/" + set.total.toString().padStart(3, '0') else localId
 
     fun imageUrl(high: Boolean = false): String? {
-        if (custom || !hasImage) return null
+        if (custom) return null
+        altImage?.let { return if (high) it[1] else it[0] }
+        if (!hasImage) return null
         val lang = if (set.lang == "JA") "ja" else "en"
         return "https://assets.tcgdex.net/$lang/${set.serieId}/${set.id}/$localId/${if (high) "high" else "low"}.webp"
     }
@@ -136,7 +142,7 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
 
         private fun readSet(r: JsonReader, idx: Int): CardSet {
             var k = ""; var lang = ""; var id = ""; var name = ""; var nameEn = ""; var series = ""
-            var serieId = ""; var date = ""; var total = 0; var abbr = ""
+            var serieId = ""; var date = ""; var total = 0; var abbr = ""; var logo = ""; var symbol = ""
             r.beginObject()
             while (r.hasNext()) {
                 when (r.nextName()) {
@@ -150,11 +156,13 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
                     "date" -> date = str(r)
                     "total" -> total = num(r)
                     "abbr" -> abbr = str(r)
+                    "logo" -> logo = str(r)
+                    "symbol" -> symbol = str(r)
                     else -> r.skipValue()
                 }
             }
             r.endObject()
-            return CardSet(idx, k, lang, id, name, nameEn, series, serieId, date, total, abbr)
+            return CardSet(idx, k, lang, id, name, nameEn, series, serieId, date, total, abbr, logo = logo, symbol = symbol)
         }
 
         // Lenient readers: one odd value must never stop the whole card list loading.
@@ -191,13 +199,24 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
                 r.endArray()
             } else r.skipValue()
             val ja = if (r.hasNext()) str(r) else ""
-            val img = if (r.hasNext()) num(r) == 1 else true
+            var img = true
+            var alt: Array<String>? = null
+            if (r.hasNext()) {
+                if (r.peek() == JsonToken.BEGIN_ARRAY) {
+                    r.beginArray()
+                    val urls = ArrayList<String>(2)
+                    while (r.hasNext()) urls.add(str(r))
+                    r.endArray()
+                    if (urls.isNotEmpty() && urls[0].isNotEmpty()) alt = arrayOf(urls[0], urls.getOrElse(1) { urls[0] })
+                    img = alt != null
+                } else img = num(r) == 1
+            }
             while (r.hasNext()) r.skipValue()
             r.endArray()
             val set = sets.getOrNull(si) ?: return
             if (name.isEmpty() || name == "undefined") return
             if (vars.isEmpty()) vars.add(Variant("normal", 0))
-            set.cards.add(Card("${set.key}:$localId", set, localId, name, normaliseRarity(rarity), dex, cat, vars, ja, img))
+            set.cards.add(Card("${set.key}:$localId", set, localId, name, normaliseRarity(rarity), dex, cat, vars, ja, img, altImage = alt))
         }
 
         private val RARITY_FIX = mapOf(

@@ -109,13 +109,15 @@ fun CardSheet(key: String) {
 
     SheetFrame(card.name, { Nav.card = null }) {
         Row(verticalAlignment = Alignment.Bottom) {
-            CardArt(card, Modifier.weight(0.42f), big = true)
+            CardArt(card, Modifier.weight(0.42f).clickable { Nav.fullImage = card.key }, big = true)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(0.58f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Label(Labels.variantLabel(card, k))
                 Text(pounds(price), style = Type.price, color = p.fg)
                 Badge(if (own != null) "Your price" else if (price != null) "Cardmarket · ${AppState.prices.date.let { d -> runCatching { LocalDate.parse(d).format(DateTimeFormatter.ofPattern("d MMM")) }.getOrDefault("") }}" else "No price yet", "none")
-                Sub("${card.set.name} · ${card.numberLabel}")
+                Text(card.set.name + " ›", color = p.want, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { Nav.goToSet(card.set.key, card.set.lang) }.padding(vertical = 2.dp))
+                Sub(card.numberLabel)
                 Sub(listOf(card.rarity.ifEmpty { "—" }, when (card.set.lang) { "JA" -> "Japanese"; "ZH" -> "Chinese (Simplified)"; else -> "English" }).joinToString(" · "))
                 if (card.nativeName.isNotEmpty()) Sub(card.nativeName)
             }
@@ -246,8 +248,16 @@ private fun PriceHistory(card: Card, k: String) {
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically).padding(start = 6.dp))
             }
         }
-        if (cut.size >= 2) LineChart(cut, { pounds(Math.round(it * 100).toInt()) })
-        else Panel { Text("Price history builds up day by day from when the price service started. The graph appears once there are a few days of prices.", color = p.muted, fontSize = 14.sp) }
+        if (cut.size >= 7) LineChart(cut, { pounds(Math.round(it * 100).toInt()) })
+        else {
+            val avg = AppState.prices.averages(card, k)
+            val today = LocalDate.now()
+            val pts = avg.map { (daysAgo, pence) -> today.minusDays(daysAgo.toLong()) to pence / 100.0 }
+            if (pts.size >= 2) {
+                LineChart(pts, { pounds(Math.round(it * 100).toInt()) })
+                Sub("Cardmarket's 30-day, 7-day and 1-day averages and today's price. Daily history fills in from here, so this becomes a full graph over the coming weeks.")
+            } else Panel { Text("Not enough Cardmarket sales of this version to draw a trend yet.", color = p.muted, fontSize = 14.sp) }
+        }
     }
 }
 

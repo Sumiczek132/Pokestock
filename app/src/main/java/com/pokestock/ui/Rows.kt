@@ -27,6 +27,7 @@ import com.pokestock.data.pounds
 /** One row in a list of cards: picture, name, set and number, price, owned/wanted badge. */
 @Composable
 fun CardRow(card: Card, onClick: () -> Unit = { Nav.openCard(card.key) }) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val p = P
     val owned = AppState.store.total(card.key)
     val wanted = AppState.store.isWish(card.key) || (card.dex > 0 && AppState.store.isSlotWant(card.dex, card.key))
@@ -58,6 +59,7 @@ fun CardRow(card: Card, onClick: () -> Unit = { Nav.openCard(card.key) }) {
 /** A copy you own (one version of a card), as shown in the portfolio. */
 @Composable
 fun HoldingRow(card: Card, variant: String, qty: Int, price: Int?, tag: String) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val p = P
     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).clickable { Nav.openCard(card.key, variant) }.padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -81,6 +83,7 @@ fun HoldingRow(card: Card, variant: String, qty: Int, price: Int?, tag: String) 
 
 @Composable
 fun SlabRow(slab: Slab) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val card = AppState.catalog.byKey[slab.card] ?: return
     val p = P
     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).clickable { Nav.openCard(card.key, slab.variant) }.padding(horizontal = 4.dp, vertical = 6.dp),

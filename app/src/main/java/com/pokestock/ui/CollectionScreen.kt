@@ -103,7 +103,7 @@ private fun SetList() {
     val hits = remember(cat, lang, q) { if (q.length >= 2) cat.search(lang, q, 300) else emptyList() }
     val slabs = remember(v) { AppState.store.allSlabs() }
 
-    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+    LazyColumn(state = Nav.setList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
             Text("Collection", style = Type.display, color = p.fg)
             Gap(10.dp)
@@ -148,14 +148,20 @@ private fun SetRow(s: CardSet, st: SetStats?) {
         if (s.custom) append("${s.cards.size} owned") else append("$a/$b $unit")
         if ((st?.value ?: 0) > 0) append(" · " + pounds(st!!.value))
     }
-    SetRowBox(s.name, sub, if (s.custom || b == 0) null else a.toFloat() / b) { Nav.openSet = s.key; Nav.setFilter = "all"; Nav.setGroup = "all" }
+    SetRowBox(s.name, sub, if (s.custom || b == 0) null else a.toFloat() / b, s.logo.ifEmpty { s.symbol }) { Nav.openSet = s.key; Nav.setFilter = "all"; Nav.setGroup = "all" }
 }
 
 @Composable
-private fun SetRowBox(title: String, sub: String, progress: Float?, onClick: () -> Unit) {
+private fun SetRowBox(title: String, sub: String, progress: Float?, logo: String? = null, onClick: () -> Unit) {
     val p = P
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (logo != null) {
+                Box(Modifier.width(72.dp).height(36.dp), contentAlignment = Alignment.Center) {
+                    if (logo.isNotEmpty()) coil.compose.AsyncImage(logo, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit, modifier = Modifier.fillMaxWidth().height(36.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = Type.strong, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Sub(sub)
@@ -199,9 +205,12 @@ private fun SetView(s: CardSet) {
         l
     }
     val (a, b, unit) = if (Nav.master) Triple(st.vHave, st.vTotal, "versions") else Triple(st.have, st.n, "cards")
-    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+    LazyColumn(state = Nav.setViewState(s.key), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
             BackLine(if (s.custom) "Your other cards" else if (s.lang == "JA") "Japanese" else if (s.lang == "ZH") "Chinese" else "English") { Nav.openSet = null }
+            val logo = s.logo.ifEmpty { s.symbol }
+            if (logo.isNotEmpty()) { coil.compose.AsyncImage(logo, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier.height(64.dp).fillMaxWidth(0.6f)); Gap(8.dp) }
             Text(s.name, style = Type.display, color = p.fg)
             if (s.lang == "JA" && s.nameEn != s.name) Sub(s.nameEn)
             val date = s.date.takeIf { it.length >= 10 }?.let { runCatching { LocalDate.parse(it.take(10)).format(DateTimeFormatter.ofPattern("d MMM yyyy")) }.getOrNull() }
@@ -238,6 +247,7 @@ private fun SetView(s: CardSet) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SetCardRow(c: Card) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
     val p = P
     val ks = AppState.versionsOf(c)
     val slabs = AppState.store.slabsOf(c.key)

@@ -21,8 +21,9 @@ const p = v => (typeof v === 'number' && v > 0) ? Math.round(v * gbp * 100) : 0
 const prices = {}
 for (const g of guide.priceGuides) {
   if (!wanted.has(g.idProduct)) continue
-  // [trend, avg30, low, trendHolo, avg30Holo, lowHolo] in pence
-  prices[g.idProduct] = [p(g.trend), p(g.avg30), p(g.low), p(g['trend-holo']), p(g['avg30-holo']), p(g['low-holo'])]
+  // [trend, avg30, low, trendHolo, avg30Holo, lowHolo, avg7, avg1, avg7Holo, avg1Holo] in pence
+  prices[g.idProduct] = [p(g.trend), p(g.avg30), p(g.low), p(g['trend-holo']), p(g['avg30-holo']), p(g['low-holo']),
+    p(g.avg7), p(g.avg1), p(g['avg7-holo']), p(g['avg1-holo'])]
 }
 const date = (guide.createdAt || new Date().toISOString()).slice(0, 10)
 fs.writeFileSync(outFile, JSON.stringify({ v: 1, date, createdAt: guide.createdAt, eurGbp: gbp, prices }))
