@@ -74,10 +74,13 @@ function checkCm(cm: number, localId: string, cardName: string, setCm: number): 
   const pname = cmNames.get(cm) || ''
   const pn = cmNumber(pname)
   const exp = cmExp.get(cm)
-  const wrongNumber = pn !== null && pn !== n
-  const wrongExp = setCm > 0 && exp !== undefined && exp !== setCm
+  // Keep it only when Cardmarket confirms it: same expansion and same number. Products missing from the
+  // singles list (e.g. promo/stamped versions) count as unconfirmed.
+  const wrongNumber = pn === null || pn !== n
+  const wrongExp = setCm > 0 && exp !== setCm
   if (!wrongNumber && !wrongExp) return cm
-  const cands = (cmByExpName.get((setCm || exp) + '|' + baseName(pname || cardName)) || cmByExpName.get((setCm || exp) + '|' + cardName.toLowerCase()) || [])
+  if (!setCm) return cm
+  const cands = (cmByExpName.get(setCm + '|' + baseName(cardName)) || cmByExpName.get(setCm + '|' + baseName(pname)) || [])
     .filter(id => id !== cm && cmNumber(cmNames.get(id) || '') === n)
   if (cands.length) { cmFixed++; return cands[0] }
   return cm
