@@ -41,11 +41,46 @@ function ptcgImages(setId: string): Map<string, [string, string]> {
 
 // Cardmarket's product list gives English names for Japanese cards (trainers, items, named Pokémon).
 const cmNames = new Map<number, string>()
+const cmExp = new Map<number, number>()                    // product -> Cardmarket expansion
+const cmByExpName = new Map<string, number[]>()            // "expansion|base name" -> products
 if (cmProductsFile && fs.existsSync(cmProductsFile)) {
   try {
     const j = JSON.parse(fs.readFileSync(cmProductsFile, 'utf8'))
-    for (const p of (j.products || j)) if (p?.idProduct && p?.name) cmNames.set(p.idProduct, String(p.name))
+    for (const p of (j.products || j)) if (p?.idProduct && p?.name) {
+      cmNames.set(p.idProduct, String(p.name))
+      if (p.idExpansion) {
+        cmExp.set(p.idProduct, p.idExpansion)
+        const key = p.idExpansion + '|' + baseName(String(p.name))
+        if (!cmByExpName.has(key)) cmByExpName.set(key, [])
+        cmByExpName.get(key)!.push(p.idProduct)
+      }
+    }
   } catch (e) { console.error('Cardmarket product list unreadable', String(e).slice(0, 100)) }
+}
+function baseName(n: string) { return n.replace(/\s*\[[^\]]*\]/g, '').replace(/\s*\([^)]*\)/g, '').trim().toLowerCase() }
+/** The card number Cardmarket puts in a product name, e.g. "Quaxly (SSP 050)" -> 50. */
+function cmNumber(n: string): number | null { const m = n.match(/\(([A-Z0-9-]+\s+)?([A-Z]*)0*(\d+)\)\s*$/); return m ? Number(m[3]) : null }
+let cmChecked = 0, cmFixed = 0
+/**
+ * The card database sometimes points a version at the wrong Cardmarket product (e.g. a stamped promo instead of
+ * the normal card, so a 5p common shows £12). If the product's number or expansion doesn't match the card,
+ * look for the right product in the set's own expansion by name and number.
+ */
+function checkCm(cm: number, localId: string, cardName: string, setCm: number): number {
+  if (!cm || !cmNames.size) return cm
+  const n = Number((localId.match(/(\d+)/) || [])[1])
+  if (!n) return cm
+  cmChecked++
+  const pname = cmNames.get(cm) || ''
+  const pn = cmNumber(pname)
+  const exp = cmExp.get(cm)
+  const wrongNumber = pn !== null && pn !== n
+  const wrongExp = setCm > 0 && exp !== undefined && exp !== setCm
+  if (!wrongNumber && !wrongExp) return cm
+  const cands = (cmByExpName.get((setCm || exp) + '|' + baseName(pname || cardName)) || cmByExpName.get((setCm || exp) + '|' + cardName.toLowerCase()) || [])
+    .filter(id => id !== cm && cmNumber(cmNames.get(id) || '') === n)
+  if (cands.length) { cmFixed++; return cands[0] }
+  return cm
 }
 // "Buddy-Buddy Poffin (M1S 081)" -> "Buddy-Buddy Poffin"; "Lopunny [Dashing Kick | Spiral Kick]" -> "Lopunny"
 const cleanCm = (n: string) => n.replace(/\s*\[[^\]]*\]\s*$/, '').replace(/\s*\((?=[^)]*\d)[^)]*\)\s*$/, '').replace(/\s*-\s*[A-Z0-9-]+\s*\d+\s*$/, '').trim()
@@ -118,7 +153,8 @@ async function walk(root: string, lang: Lang) {
           const k = variantKey(v)
           if (seen.has(k)) continue
           seen.add(k)
-          vs.push([k, v.thirdParty?.cardmarket || 0])
+          const plain = !k.includes('+') && !k.includes('~')
+          vs.push([k, plain ? checkCm(v.thirdParty?.cardmarket || 0, localId, native, set.thirdParty?.cardmarket || 0) : (v.thirdParty?.cardmarket || 0)])
         }
         if (!vs.length) {
           const r = String(c.rarity || '')
@@ -148,7 +184,8 @@ async function walk(root: string, lang: Lang) {
 
 await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
-const out = { v: 1, built: new Date().toISOString(), sets, cards }
+console.log(`Cardmarket links checked: ${cmChecked}, corrected: ${cmFixed}`)
+const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size }, sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
 const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])

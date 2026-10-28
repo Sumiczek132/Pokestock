@@ -60,6 +60,11 @@ fun ShareSheet(req: ShareRequest) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    val say = toast()
+    if (req.items.isEmpty()) {
+        androidx.compose.runtime.LaunchedEffect(req) { say("Nothing missing to share. That one's complete!"); Nav.share = null }
+        return
+    }
     Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable { if (!busy) Nav.share = null }) {
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)).background(p.bg)
             .clickable(enabled = false) {}.navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -67,8 +72,8 @@ fun ShareSheet(req: ShareRequest) {
             Sub("${req.items.size} cards")
             if (busy) Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = p.accent) }
             else {
-                Btn("Picture (JPEG)", Modifier.fillMaxWidth(), primary = true) { busy = true; scope.launch { Export.share(ctx, req, "jpeg"); busy = false; Nav.share = null } }
-                Btn("PDF", Modifier.fillMaxWidth()) { busy = true; scope.launch { Export.share(ctx, req, "pdf"); busy = false; Nav.share = null } }
+                Btn("Picture (JPEG)", Modifier.fillMaxWidth(), primary = true) { busy = true; scope.launch { val err = Export.share(ctx, req, "jpeg"); busy = false; Nav.share = null; err?.let { say(it) } } }
+                Btn("PDF", Modifier.fillMaxWidth()) { busy = true; scope.launch { val err = Export.share(ctx, req, "pdf"); busy = false; Nav.share = null; err?.let { say(it) } } }
                 Btn("Text", Modifier.fillMaxWidth()) { Export.shareText(ctx, req); Nav.share = null }
                 Text("Pictures show card images you've already loaded; others appear as coloured cards.", color = p.faint, fontWeight = FontWeight.Normal)
             }
@@ -87,28 +92,32 @@ object Export {
         ctx.startActivity(Intent.createChooser(i, req.title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    suspend fun share(ctx: Context, req: ShareRequest, kind: String) {
-        val files = withContext(Dispatchers.IO) {
-            val pics = req.items.map { loadBitmap(ctx, it.card) }
+    /** Makes the picture(s) or PDF and opens the share menu. Returns an error message, or null when it worked. */
+    suspend fun share(ctx: Context, req: ShareRequest, kind: String): String? {
+        val files = try { withContext(Dispatchers.IO) {
             val dir = File(ctx.cacheDir, "exports").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
             val stamp = LocalDate.now().toString()
             val safe = req.title.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').take(40)
-            if (kind == "pdf") listOf(renderPdf(req, pics, File(dir, "$safe-$stamp.pdf")))
+            // Pictures are fetched one card at a time while drawing, so long lists don't run out of memory.
+            val load: suspend (Card) -> Bitmap? = { c -> runCatching { kotlinx.coroutines.withTimeoutOrNull(6000) { loadBitmap(ctx, c) } }.getOrNull() }
+            if (kind == "pdf") listOf(renderPdf(req, load, File(dir, "$safe-$stamp.pdf")))
             else req.items.indices.chunked(40).mapIndexed { n, idx ->
-                renderJpeg(req, idx.map { req.items[it] }, idx.map { pics[it] }, n + 1, (req.items.size + 39) / 40, File(dir, "$safe-$stamp-${n + 1}.jpg"))
+                renderJpeg(req, idx.map { req.items[it] }, load, n + 1, (req.items.size + 39) / 40, File(dir, "$safe-$stamp-${n + 1}.jpg"))
             }
-        }
+        } } catch (e: Throwable) { return "Couldn't make the ${if (kind == "pdf") "PDF" else "picture"}: ${e.message ?: e.javaClass.simpleName}" }
         val uris = ArrayList(files.map { FileProvider.getUriForFile(ctx, ctx.packageName + ".files", it) })
         val mime = if (kind == "pdf") "application/pdf" else "image/jpeg"
         val i = if (uris.size == 1) Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uris[0])
         else Intent(Intent.ACTION_SEND_MULTIPLE).setType(mime).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).putExtra(Intent.EXTRA_SUBJECT, req.title)
         ctx.startActivity(Intent.createChooser(i, req.title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        return null
     }
 
     private suspend fun loadBitmap(ctx: Context, card: Card): Bitmap? {
         val url = card.imageUrl() ?: return null
-        val r = ctx.imageLoader.execute(ImageRequest.Builder(ctx).data(url).allowHardware(false).size(320, 446).build())
+        val r = ctx.imageLoader.execute(ImageRequest.Builder(ctx).data(url).allowHardware(false).size(240, 335)
+            .memoryCachePolicy(coil.request.CachePolicy.DISABLED).build())
         return ((r as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
     }
 
@@ -140,7 +149,7 @@ object Export {
         item.price?.let { c.drawText(pounds(it), x, ty, price) }
     }
 
-    private fun renderJpeg(req: ShareRequest, items: List<ShareItem>, pics: List<Bitmap?>, part: Int, parts: Int, out: File): File {
+    private suspend fun renderJpeg(req: ShareRequest, items: List<ShareItem>, load: suspend (Card) -> Bitmap?, part: Int, parts: Int, out: File): File {
         val scale = 2f; val cols = 4; val margin = 24f * scale; val gap = 12f * scale
         val width = 1080
         val cellW = (width - 2 * margin - (cols - 1) * gap) / cols
@@ -155,14 +164,15 @@ object Export {
         c.drawText("${req.items.size} cards · ${LocalDate.now().format(DateTimeFormatter.ofPattern("d MMM yyyy"))} · Pokestock", margin, margin + 44f * scale, paint(MUTED, 13f * scale))
         items.forEachIndexed { i, it ->
             val col = i % cols; val row = i / cols
-            drawCell(c, margin + col * (cellW + gap), header + row * (cellH + gap), cellW, it, pics[i], scale * 0.85f)
+            val pic = load(it.card)
+            drawCell(c, margin + col * (cellW + gap), header + row * (cellH + gap), cellW, it, pic, scale * 0.85f)
         }
         out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         bmp.recycle()
         return out
     }
 
-    private fun renderPdf(req: ShareRequest, pics: List<Bitmap?>, out: File): File {
+    private suspend fun renderPdf(req: ShareRequest, load: suspend (Card) -> Bitmap?, out: File): File {
         val doc = PdfDocument()
         val pw = 595; val ph = 842; val cols = 4; val rowsPerPage = 3
         val margin = 30f; val gap = 10f; val header = 56f
@@ -182,7 +192,7 @@ object Export {
                 if (i >= req.items.size) break
                 val col = k % cols; val row = k / cols
                 val x = margin + col * (cellW + gap); val y = header + row * (cellH + gap)
-                drawPdfCell(c, x, y, cellW, req.items[i], pics[i])
+                drawPdfCell(c, x, y, cellW, req.items[i], load(req.items[i].card))
             }
             doc.finishPage(page)
         }

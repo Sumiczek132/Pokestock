@@ -61,8 +61,10 @@ fun ebayUrl(card: Card, variant: String, grade: String?): String {
     return "https://www.ebay.co.uk/sch/i.html?_nkw=$q&_sacat=183454&LH_Sold=1&LH_Complete=1&LH_PrefLoc=1&_sop=13&Graded=" + if (grade != null) "Yes" else "No"
 }
 
-/** Cardmarket search for the card's name (Cardmarket's own search page; works for English and Japanese). */
-fun cardmarketUrl(card: Card): String {
+/** The card's own Cardmarket page when we know its product, otherwise a Cardmarket search for its name. */
+fun cardmarketUrl(card: Card, variant: String? = null): String {
+    val cm = card.variants.firstOrNull { it.key == variant }?.cm?.takeIf { it > 0 } ?: card.variants.firstOrNull { it.cm > 0 }?.cm
+    if (cm != null) return "https://www.cardmarket.com/en/Pokemon/Products?idProduct=$cm"
     val name = card.name.replace(Regex("\\(.*?\\)|\\[.*?]"), " ").replace(Regex("\\s+"), " ").trim()
     return "https://www.cardmarket.com/en/Pokemon/Products/Search?searchString=" + Uri.encode(name)
 }
@@ -184,9 +186,9 @@ fun CardSheet(key: String) {
             }
         }
         Btn(if (online) "Cardmarket" else "Cardmarket needs signal", Modifier.fillMaxWidth(), enabled = online) {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cardmarketUrl(card))))
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cardmarketUrl(card, k))))
         }
-        Sub("eBay opens UK sold listings for this exact version, ungraded only. Cardmarket opens a search for this card, where you can pick the set and version.")
+        Sub("eBay opens UK sold listings for this exact version, ungraded only. Cardmarket opens this card's page there.")
 
         if (card.dex > 0) {
             val inBinder = AppState.store.binderCard(card.dex) == card.key

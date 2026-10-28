@@ -55,7 +55,7 @@ jobs:
           node -e "
             const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/catalog.json'));
             const size=f=>fs.statSync(f).size;
-            fs.writeFileSync('manifest.json',JSON.stringify({v:1,catalogBuilt:c.built,sets:c.sets.length,cards:c.cards.length,pricesDate:'$DATE',pricesBuilt:new Date().toISOString(),
+            fs.writeFileSync('manifest.json',JSON.stringify({v:1,catalogBuilt:c.built,sets:c.sets.length,cards:c.cards.length,pricesDate:'$DATE',pricesBuilt:new Date().toISOString(),stats:c.stats||{},
               sizes:{catalog:size('catalog.json.gz'),prices:size('prices.json.gz'),history:size('history.json.gz')}}))"
           git init -q -b data
           git config user.name "pokestock-bot"
