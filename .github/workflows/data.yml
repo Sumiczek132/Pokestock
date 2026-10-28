@@ -1,0 +1,62 @@
+name: Card data and prices
+
+# Every morning: rebuild the card catalogue from tcgdex/cards-database, fetch
+# Cardmarket's price guide in £, and roll it into a bounded price history.
+# Results replace the single commit on the `data` branch, which the app downloads.
+on:
+  schedule:
+    - cron: '17 4 * * *'   # before the phones' 6:00 update
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install script tools
+        run: npm install --no-save tsx@4.19.2
+      - name: Get the card database
+        run: git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/cards-database
+      - name: Get picture index
+        run: curl -fsSL https://assets.tcgdex.net/datas.json -o /tmp/datas.json || echo '{}' > /tmp/datas.json
+      - name: Get yesterday's history
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null; then
+            git fetch --depth 1 origin data
+            git show origin/data:history.json.gz > /tmp/history-prev.json.gz && gunzip -f /tmp/history-prev.json.gz || true
+          fi
+      - name: Build catalogue
+        run: npx tsx scripts/build-catalog.mts /tmp/cards-database /tmp/catalog.json /tmp/datas.json
+      - name: Build prices and history
+        run: node scripts/build-prices.mjs /tmp/catalog.json /tmp/prices.json /tmp/history-prev.json /tmp/history.json
+      - name: Publish to the data branch
+        run: |
+          set -e
+          DATE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/prices.json')).date)")
+          mkdir -p /tmp/out && cd /tmp/out
+          gzip -9 -c /tmp/catalog.json > catalog.json.gz
+          gzip -9 -c /tmp/prices.json > prices.json.gz
+          gzip -9 -c /tmp/history.json > history.json.gz
+          node -e "
+            const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/catalog.json'));
+            const size=f=>fs.statSync(f).size;
+            fs.writeFileSync('manifest.json',JSON.stringify({v:1,catalogBuilt:c.built,sets:c.sets.length,cards:c.cards.length,pricesDate:'$DATE',
+              sizes:{catalog:size('catalog.json.gz'),prices:size('prices.json.gz'),history:size('history.json.gz')}}))"
+          git init -q -b data
+          git config user.name "pokestock-bot"
+          git config user.email "pokestock-bot@users.noreply.github.com"
+          git add -A
+          git commit -qm "Card data and prices for $DATE"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          cat manifest.json
