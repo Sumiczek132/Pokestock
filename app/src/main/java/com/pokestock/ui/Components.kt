@@ -172,16 +172,49 @@ fun Panel(modifier: Modifier = Modifier, padding: Dp = 12.dp, content: @Composab
 fun Btn(text: String, modifier: Modifier = Modifier, primary: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     val p = P
     val shape = RoundedCornerShape(12.dp)
+    // Secondary buttons get a raised fill and an accent outline so they stand out from cards and panels.
     Box(
         modifier.heightIn(min = 48.dp).clip(shape)
-            .background(if (primary) p.accent else p.surface)
-            .border(1.dp, if (primary) p.accent else p.line, shape)
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
+            .background(when { !enabled -> p.surface; primary -> p.accent; else -> p.surface2 })
+            .border(if (primary) 1.dp else 1.5.dp, when { !enabled -> p.line; primary -> p.accent; else -> p.accent.copy(alpha = 0.6f) }, shape)
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, color = when {
-            !enabled -> p.faint; primary -> p.onAccent; else -> p.fg
+            !enabled -> p.faint; primary -> p.onAccent; else -> p.accentInk
         })
+    }
+}
+
+/** A tappable entry that opens another page: accent icon, title, detail line and an arrow. */
+@Composable
+fun NavCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, detail: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val p = P
+    val shape = RoundedCornerShape(14.dp)
+    Row(modifier.fillMaxWidth().clip(shape).background(p.surface).border(1.5.dp, p.accent.copy(alpha = 0.45f), shape)
+        .clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(p.accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(icon, contentDescription = null, tint = p.accentInk, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Bold, color = p.fg, fontSize = 15.sp)
+            Text(detail, color = p.muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Text("›", color = p.accentInk, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Compact action with an icon, for rows of actions like Binder pages / Quick add / Share. */
+@Composable
+fun ActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val p = P
+    val shape = RoundedCornerShape(12.dp)
+    Column(modifier.clip(shape).background(p.surface2).border(1.5.dp, p.accent.copy(alpha = 0.6f), shape).clickable(onClick = onClick)
+        .padding(vertical = 10.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        androidx.compose.material3.Icon(icon, contentDescription = null, tint = p.accentInk, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = p.fg, textAlign = TextAlign.Center, maxLines = 1)
     }
 }
 

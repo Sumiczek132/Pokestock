@@ -100,7 +100,8 @@ fun DexBinderScreen() {
             n to c
         }
     }
-    val pages = pockets.chunked(PER_PAGE).mapIndexed { i, l -> i + 1 to l }
+    // The Pokédex binder is a 16-pocket (4 × 4) binder.
+    val pages = pockets.chunked(16).mapIndexed { i, l -> i + 1 to l }
     val shown = if (gapsOnly) pages.filter { (_, l) -> l.any { it.second == null } } else pages
     Column(Modifier.fillMaxSize().background(p.bg).statusBarsPadding().navigationBarsPadding()) {
         PageHeader("Pokédex binder pages") { Nav.page = null }
@@ -113,7 +114,7 @@ fun DexBinderScreen() {
                 }
             }
             items(shown, key = { it.first }) { (n, list) ->
-                BinderPage(n, list.map { (dex, c) -> PocketView(c, null, c != null, dexNo(dex), name = Species.name(dex), dex = dex) })
+                BinderPage(n, list.map { (dex, c) -> PocketView(c, null, c != null, dexNo(dex), name = Species.name(dex), dex = dex) }, columns = 4)
             }
         }
     }
@@ -122,7 +123,7 @@ fun DexBinderScreen() {
 private data class PocketView(val card: Card?, val variant: String?, val owned: Boolean, val number: String, val showVersion: Boolean = false, val name: String? = null, val dex: Int = 0)
 
 @Composable
-private fun BinderPage(n: Int, pockets: List<PocketView>) {
+private fun BinderPage(n: Int, pockets: List<PocketView>, columns: Int = 3) {
     val p = P
     Panel(padding = 10.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -130,10 +131,10 @@ private fun BinderPage(n: Int, pockets: List<PocketView>) {
                 Text("Page $n", fontWeight = FontWeight.Bold, color = p.fg, modifier = Modifier.weight(1f))
                 Sub("${pockets.count { it.owned }}/${pockets.size}")
             }
-            pockets.chunked(3).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            pockets.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(if (columns > 3) 6.dp else 8.dp)) {
                     row.forEach { pk -> Box(Modifier.weight(1f)) { PocketCell(pk) } }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

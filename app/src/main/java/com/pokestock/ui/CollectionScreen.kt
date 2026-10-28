@@ -108,9 +108,20 @@ private fun SetList() {
     }
     val slabs = remember(v) { AppState.store.allSlabs() }
 
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val uiPrefs = remember { ctx.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE) }
+    if (!Nav.collapsedLoaded) { Nav.collapsedLoaded = true; Nav.collapsed.addAll(uiPrefs.getStringSet("collapsed", emptySet()).orEmpty()) }
+    fun toggleSeries(sr: String) {
+        if (sr in Nav.collapsed) Nav.collapsed.remove(sr) else Nav.collapsed.add(sr)
+        uiPrefs.edit().putStringSet("collapsed", Nav.collapsed.toSet()).apply()
+    }
+    if (Nav.colView == "binders") { BindersList(); return }
+
     LazyColumn(state = Nav.setList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
             Text("Collection", style = Type.display, color = p.fg)
+            Gap(10.dp)
+            Segmented(listOf("sets" to "Sets", "binders" to "Binders"), Nav.colView) { Nav.colView = it }
             Gap(10.dp)
             Segmented(listOf("EN" to "English", "JA" to "Japanese", "ZH" to "Chinese"), lang) { Nav.lang = it }
             Gap(10.dp)
@@ -135,20 +146,8 @@ private fun SetList() {
             items(shown, key = { "h" + it.key }) { CardRow(it) }
         }
         if (q.isEmpty()) item {
-            SectionHead("Graded")
-            SetRowBox("Graded slabs", "${slabs.size} slabs · " + pounds(slabs.sumOf { maxOf(0, it.price).toLong() }), null) { Nav.openSet = "slabs" }
-        }
-        val binderSets = if (q.isEmpty()) sets.filter { AppState.store.binderMode(it.key).isNotEmpty() }.sortedByDescending { it.date } else emptyList()
-        if (binderSets.isNotEmpty()) {
-            item { SectionHead("Your set binders") }
-            items(binderSets, key = { "b" + it.key }) { s ->
-                val mode = AppState.store.binderMode(s.key)
-                val pk = remember(v, s.key, mode) { com.pokestock.data.Binder.pockets(s, mode) }
-                val have = pk.count { it.owned }
-                SetRowBox(s.name, "${com.pokestock.data.Binder.modeName(mode)} · $have/${pk.size} pockets", if (pk.isEmpty()) null else have.toFloat() / pk.size, s.logo.ifEmpty { s.symbol }) {
-                    Nav.page = "binder:" + s.key
-                }
-            }
+            Gap(14.dp)
+            NavCard(androidx.compose.material.icons.Icons.Outlined.WorkspacePremium, "Graded slabs", "${slabs.size} slabs · " + pounds(slabs.sumOf { maxOf(0, it.price).toLong() })) { Nav.openSet = "slabs" }
         }
         if (lang == "ZH") item {
             Gap(); Panel { Text("Chinese set lists aren't in the card database yet, so this shows the Chinese cards you own. Full lists will follow when a source is found.", color = p.muted, fontSize = 14.sp) }
@@ -158,8 +157,17 @@ private fun SetList() {
         val groups = LinkedHashMap<String, MutableList<CardSet>>()
         real.forEach { groups.getOrPut(it.series) { ArrayList() }.add(it) }
         groups.forEach { (series, list) ->
-            item(key = "g$series") { SectionHead(series) }
-            items(list, key = { it.key }) { s -> SetRow(s, stats[s.key]) }
+            val folded = q.isEmpty() && series in Nav.collapsed
+            item(key = "g$series") {
+                Row(Modifier.fillMaxWidth().padding(top = 18.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).background(p.surface)
+                    .clickable { toggleSeries(series) }.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (folded) "▸" else "▾", color = p.accentInk, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(10.dp))
+                    Text(series, fontWeight = FontWeight.Bold, color = p.fg, modifier = Modifier.weight(1f))
+                    Sub("${list.size} sets")
+                }
+            }
+            if (!folded) items(list, key = { it.key }) { s -> SetRow(s, stats[s.key]) }
         }
         val custom = visible.filter { it.custom && it.cards.isNotEmpty() }.sortedBy { it.name }
         if (custom.isNotEmpty()) {
@@ -247,12 +255,13 @@ private fun SetView(s: CardSet) {
             Sub(listOfNotNull(date?.let { "Released $it" }, "${s.cards.size} cards" + if (s.total > 0 && s.total < s.cards.size) " (${s.total} + secret rares)" else "").joinToString(" · "))
             Gap(10.dp)
             val ctx = androidx.compose.ui.platform.LocalContext.current
-            ChipRow {
-                Chip("Binder pages", false) { if (AppState.store.binderMode(s.key).isEmpty()) AppState.store.setBinderMode(s.key, "base"); Nav.page = "binder:" + s.key }
-                Chip("Quick add", false) { Nav.page = "quick:" + s.key }
-                Chip("Share missing", false) {
-                    val mode = AppState.store.binderMode(s.key).ifEmpty { if (Nav.master) "master" else "base" }
-                    com.pokestock.data.ShareText.send(ctx, com.pokestock.data.ShareText.missing(s, mode), "Missing from ${s.name}")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(androidx.compose.material.icons.Icons.Outlined.GridView, "Binder pages", Modifier.weight(1f)) {
+                    if (AppState.store.binderMode(s.key).isEmpty()) AppState.store.setBinderMode(s.key, "base"); Nav.page = "binder:" + s.key
+                }
+                ActionButton(androidx.compose.material.icons.Icons.Outlined.Bolt, "Quick add", Modifier.weight(1f)) { Nav.page = "quick:" + s.key }
+                ActionButton(androidx.compose.material.icons.Icons.Outlined.IosShare, "Share missing", Modifier.weight(1f)) {
+                    Nav.share = ShareRequest("Missing from ${s.name}", ShareLists.missing(s, AppState.store.binderMode(s.key).ifEmpty { if (Nav.master) "master" else "base" }))
                 }
             }
             Gap()
@@ -349,5 +358,63 @@ private fun SlabList() {
             item(key = "g$g") { SectionHead(g) }
             items(list, key = { it.id }) { SlabRow(it) }
         }
+    }
+}
+
+
+/** Every set you're building a binder for, in any language, with progress in the style you chose. */
+@Composable
+private fun BindersList() {
+    val p = P
+    val v = AppState.version
+    val cat = AppState.catalog
+    val list = remember(v, cat) {
+        cat.sets.filter { AppState.store.binderMode(it.key).isNotEmpty() }.map { s ->
+            val mode = AppState.store.binderMode(s.key)
+            val pk = com.pokestock.data.Binder.pockets(s, mode)
+            Triple(s, mode, pk.count { it.owned } to pk.size)
+        }.sortedByDescending { it.first.date }
+    }
+    val dexFilled = remember(v, cat) { (1..com.pokestock.data.Species.count).count { AppState.store.binderCard(it)?.let { k -> cat.byKey[k] } != null } }
+    LazyColumn(state = Nav.binderList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Text("Collection", style = Type.display, color = p.fg)
+            Gap(10.dp)
+            Segmented(listOf("sets" to "Sets", "binders" to "Binders"), Nav.colView) { Nav.colView = it }
+            Gap(6.dp)
+        }
+        item {
+            BinderProgressCard(null, "Pokédex binder", "16-pocket pages · illustration rares", dexFilled, com.pokestock.data.Species.count) { Nav.page = "dexbinder" }
+        }
+        if (list.isEmpty()) item {
+            Panel { Text("No set binders yet. Open any set and tap Binder pages to start one, then pick Base set, Base + reverse or Master set.", color = p.muted, fontSize = 14.sp) }
+        }
+        items(list, key = { it.first.key }) { (s, mode, prog) ->
+            BinderProgressCard(s.logo.ifEmpty { s.symbol }, s.name, com.pokestock.data.Binder.modeName(mode) + (if (s.lang == "JA") " · Japanese" else ""), prog.first, prog.second) {
+                Nav.page = "binder:" + s.key
+            }
+        }
+    }
+}
+
+@Composable
+private fun BinderProgressCard(logo: String?, title: String, sub: String, have: Int, total: Int, onClick: () -> Unit) {
+    val p = P
+    val pct = if (total > 0) have * 100 / total else 0
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(p.surface).border(1.dp, p.line, shape).clickable(onClick = onClick).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!logo.isNullOrEmpty()) {
+                coil.compose.AsyncImage(logo, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit, modifier = Modifier.width(72.dp).height(36.dp))
+                Spacer(Modifier.width(12.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, color = p.fg)
+                Sub("$sub · $have/$total")
+            }
+            Text("$pct%", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, color = if (pct >= 100) p.up else p.accentInk)
+        }
+        ProgressBar(if (total > 0) have.toFloat() / total else 0f)
     }
 }

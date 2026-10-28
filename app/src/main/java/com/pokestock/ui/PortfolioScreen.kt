@@ -90,24 +90,18 @@ fun PortfolioScreen() {
             val tr = remember(v) { AppState.store.tradeRaw() }
             val ts = remember(v) { AppState.store.tradeSlabs() }
             val tv = tr.sumOf { (k, q) -> AppState.catalog.byKey[k.substringBefore('|')]?.let { (AppState.unitPrice(it, k.substringAfter('|')) ?: 0).toLong() * q } ?: 0L } + ts.sumOf { maxOf(0, it.price).toLong() }
-            Panel(Modifier.clickable { Nav.page = "trade" }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Trade binder", fontWeight = FontWeight.Bold, color = p.fg)
-                        Sub("${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)}")
-                    }
-                    Text("Trade now ›", color = p.want, fontWeight = FontWeight.SemiBold)
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                NavCard(androidx.compose.material.icons.Icons.Outlined.SwapHoriz, "Trade binder", "${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)} · tap to trade") { Nav.page = "trade" }
+                NavCard(androidx.compose.material.icons.Icons.Outlined.ContentCopy, "Duplicates", "Spare copies worth putting in the trade binder") { Nav.page = "dupes" }
+                NavCard(androidx.compose.material.icons.Icons.Outlined.TrendingUp, "Top 100", "Your most valuable cards, what's going up and down") { Nav.page = "top" }
             }
-            Gap(8.dp)
-            Btn("Find duplicates to trade", Modifier.fillMaxWidth()) { Nav.page = "dupes" }
             SectionHead("Most valuable")
         }
         items(data.top, key = { "t" + it.first.card.key + it.first.variant }) { (h, pr) ->
             HoldingRow(h.card, h.variant, h.qty, pr.takeIf { it > 0 }, Labels.variantLabel(h.card, h.variant))
         }
         item {
-            Btn("View top 100", Modifier.fillMaxWidth().padding(top = 8.dp)) { Nav.page = "top" }
+            Btn("View top 100", Modifier.fillMaxWidth().padding(top = 8.dp), primary = true) { Nav.page = "top" }
             SectionHead("Recently added")
         }
         items(data.recent, key = { "r" + it.card.key + it.variant }) { h ->

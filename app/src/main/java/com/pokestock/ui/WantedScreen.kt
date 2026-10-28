@@ -43,7 +43,7 @@ fun WantedScreen() {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Wanted", style = Type.display, color = p.fg, modifier = Modifier.weight(1f))
-                Btn("Share list") { com.pokestock.data.ShareText.send(ctx, com.pokestock.data.ShareText.wanted(), "My want list") }
+                Btn("Share list") { Nav.share = ShareRequest("My want list", ShareLists.wanted()) }
             }
             Sub("Check here before you buy. It works without signal.")
             SectionHead("Empty binder slots", "${empty.size} · from ${pounds(cost(empty))}")

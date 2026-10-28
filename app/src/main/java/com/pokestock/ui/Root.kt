@@ -71,11 +71,16 @@ object Nav {
     var fullImage by mutableStateOf<String?>(null)
     var page by mutableStateOf<String?>(null)          // "top" or "trade", shown over the tabs
     var searchOwned by mutableStateOf("all")
+    var share by mutableStateOf<ShareRequest?>(null)
+    var colView by mutableStateOf("sets")              // "sets" or "binders" in the Collection tab
+    val collapsed = androidx.compose.runtime.mutableStateListOf<String>()   // folded series headings
+    var collapsedLoaded = false
     var ownedFirst by mutableStateOf(true)    // card key shown full screen
 
     // Scroll positions, kept so going back returns to the same place.
     val setList = androidx.compose.foundation.lazy.LazyListState()
     val dexGrid = androidx.compose.foundation.lazy.grid.LazyGridState()
+    val binderList = androidx.compose.foundation.lazy.LazyListState()
     private val setViews = HashMap<String, androidx.compose.foundation.lazy.LazyListState>()
     fun setViewState(key: String) = setViews.getOrPut(key) { androidx.compose.foundation.lazy.LazyListState() }
 
@@ -137,6 +142,8 @@ fun PokestockRoot(startOnSync: Boolean) {
         }
         AnimatedVisibility(Nav.addCustom, enter = slideInVertically { it }, exit = slideOutVertically { it }) { AddCustomSheet() }
         if (Nav.fullImage != null) FullImage(Nav.fullImage!!)
+        Nav.share?.let { ShareSheet(it) }
+        BackHandler(Nav.share != null) { Nav.share = null }
         BackHandler(Nav.fullImage != null) { Nav.fullImage = null }
         BackHandler(Nav.addCustom && Nav.card == null) { Nav.addCustom = false }
         BackHandler(Nav.card != null && Nav.fullImage == null) { Nav.card = null }
