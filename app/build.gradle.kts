@@ -16,6 +16,9 @@ android {
         targetSdk = 34
         versionCode = versionCodeFromCi
         versionName = "0.1.$versionCodeFromCi"
+        // Samsung phones from the last several years are all 64-bit ARM; leaving out other CPU types
+        // keeps the download small (the on-phone text recognition ships native code per CPU type).
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     signingConfigs {
