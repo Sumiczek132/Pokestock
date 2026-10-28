@@ -121,6 +121,7 @@ fun SlotSheet(n: Int) {
     val p = P
     @Suppress("UNUSED_VARIABLE") val v = AppState.version
     var showAll by remember(n) { mutableStateOf(false) }
+    var showAllOther by remember(n) { mutableStateOf(false) }
     val all = AppState.catalog.bySpecies[n].orEmpty()
     val pri = { c: Card -> when (Labels.group(c.rarity)) { "special" -> 0; "art" -> 1; "ultra" -> 2; else -> 3 } }
     val mine = all.filter { AppState.store.total(it.key) > 0 }.sortedWith(compareBy<Card> { pri(it) }.thenBy { AppState.lowPrice(it) ?: Int.MAX_VALUE })
@@ -130,6 +131,12 @@ fun SlotSheet(n: Int) {
         .sortedWith(compareByDescending<Card> { it.key in wanted }.thenBy { pri(it) }.thenBy { AppState.lowPrice(it) ?: Int.MAX_VALUE })
     val more = cand.size > 15 && !showAll
     if (more) cand = cand.take(15)
+    // Everything else for this Pokémon (promos, holos, older sets...), most valuable first, so nothing is hidden.
+    val fancyKeys = cand.map { it.key }.toSet()
+    val otherAll = all.filter { AppState.store.total(it.key) == 0 && it.key !in fancyKeys && it.key !in wanted &&
+            Labels.group(it.rarity) !in setOf("special", "art", "ultra") }
+        .sortedWith(compareByDescending<Card> { AppState.lowPrice(it) ?: -1 }.thenBy { it.set.lang != "EN" })
+    val otherShown = if (showAllOther) otherAll else otherAll.take(if (cand.size < 5) 12 else 6)
 
     SheetFrame(dexNo(n) + " " + Species.name(n), { Nav.slot = null }) {
         if (cur != null) Row(verticalAlignment = Alignment.Bottom) {
@@ -158,11 +165,18 @@ fun SlotSheet(n: Int) {
             Row { Label(if (cur != null) "Upgrade to one of these" else "I want one of these", Modifier.weight(1f)); Sub("${slotWantsOpen(n).size} ticked") }
             if (cur != null) Sub("Ticking a card marks this slot ↑ Upgrade in the Pokédex.")
             Gap(4.dp)
-            if (cand.isEmpty()) Sub("No other illustration or ultra rares for this Pokémon in the English and Japanese lists.")
+            if (cand.isEmpty()) Sub("No illustration or ultra rares for this Pokémon yet. Pick from the other cards below.")
             cand.forEach { c -> OptionRow(c, selected = c.key in wanted, radio = false) { AppState.store.toggleSlotWant(n, c.key) } }
             if (more) Btn("Show all options", Modifier.padding(top = 6.dp)) { showAll = true }
             Gap(6.dp)
             Sub("Illustration rares first, then cheapest.")
+        }
+        if (otherAll.isNotEmpty()) Column {
+            Row { Label("Other ${Species.name(n)} cards", Modifier.weight(1f)); Sub("${otherAll.size} cards") }
+            Sub("Promos, holos and older cards, most valuable first.")
+            Gap(4.dp)
+            otherShown.forEach { c -> OptionRow(c, selected = c.key in wanted, radio = false) { AppState.store.toggleSlotWant(n, c.key) } }
+            if (otherShown.size < otherAll.size) Btn("Show all ${otherAll.size}", Modifier.padding(top = 6.dp)) { showAllOther = true }
         }
     }
 }
