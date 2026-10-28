@@ -61,6 +61,34 @@ function baseName(n: string) { return n.replace(/\s*\[[^\]]*\]/g, '').replace(/\
 /** The card number Cardmarket puts in a product name, e.g. "Quaxly (SSP 050)" -> 50. */
 function cmNumber(n: string): number | null { const m = n.match(/\(([A-Z0-9-]+\s+)?([A-Z]*)0*(\d+)\)\s*$/); return m ? Number(m[3]) : null }
 let cmChecked = 0, cmFixed = 0
+const isPlain = (k: string) => !k.includes('+') && !k.includes('~')
+/**
+ * Cardmarket often has two products with the same name in a set (the normal card plus a later-listed stamped or
+ * promo version) and the card database sometimes points the normal card at the wrong one (Quaxly SSP 050 showed
+ * £12.89 instead of 3p). Cardmarket lists a set's cards in number order, so the right product is the one whose id
+ * sits next to the neighbouring cards' ids.
+ */
+function fixSiblings(rows: any[], setCm: number) {
+  if (!setCm || !cmExp.size) return
+  const plainCm = (r: any) => { const v = r?.vs?.find((x: any) => isPlain(x[0]) && x[1]); return v ? v[1] as number : 0 }
+  for (let i = 0; i < rows.length; i++) {
+    const cm = plainCm(rows[i]); if (!cm || cmExp.get(cm) !== setCm) continue
+    const sibs = (cmByExpName.get(setCm + '|' + baseName(cmNames.get(cm) || '')) || []).filter(id => id !== cm)
+    if (!sibs.length) continue
+    const near: number[] = []
+    for (const j of [i - 2, i - 1, i + 1, i + 2]) { const n = plainCm(rows[j]); if (n && cmExp.get(n) === setCm) near.push(n) }
+    if (near.length < 2) continue
+    const dist = (id: number) => Math.min(...near.map(n => Math.abs(n - id)))
+    const best = sibs.reduce((a, b) => dist(a) <= dist(b) ? a : b)
+    if (dist(cm) > 20 && dist(best) <= 4) {
+      for (const v of rows[i].vs) {
+        if (isPlain(v[0]) && v[1] === cm) v[1] = best
+        else if (!isPlain(v[0]) && v[1] === best) v[1] = cm   // the stamped version gets the other product
+      }
+      cmFixed++
+    }
+  }
+}
 /**
  * The card database sometimes points a version at the wrong Cardmarket product (e.g. a stamped promo instead of
  * the normal card, so a 5p common shows £12). If the product's number or expansion doesn't match the card,
@@ -172,6 +200,7 @@ async function walk(root: string, lang: Lang) {
       }
       if (!rows.length) continue
       rows.sort((a, b) => localSort(a.localId, b.localId))
+      fixSiblings(rows, set.thirdParty?.cardmarket || 0)
       const si = sets.length
       sets.push({
         k: `${lang}:${set.id}`, lang, id: set.id, name: lang === 'JA' && jaNames[set.id] ? jaNames[set.id] : setName, nameEn: set.name?.en || (lang === 'JA' ? setName : ''),
@@ -188,7 +217,7 @@ async function walk(root: string, lang: Lang) {
 await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
 console.log(`Cardmarket links checked: ${cmChecked}, corrected: ${cmFixed}`)
-const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size, sample: [794946, 794947, 794286, 794316, 794317].map(id => [id, cmNames.get(id) || null, cmExp.get(id) || null]) }, sets, cards }
+const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size }, sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
 const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])
