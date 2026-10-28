@@ -57,10 +57,10 @@ async function walk(root: string, lang: Lang) {
         const localId = cf.slice(0, -3)
         const native = c.name?.[nameKey]
         if (!native) continue
-        const dex = Array.isArray(c.dexId) ? (c.dexId[0] || 0) : 0
+        const dex = Array.isArray(c.dexId) ? Math.floor(Number(c.dexId[0]) || 0) : 0
         let name = native
         if (lang === 'JA') {
-          name = dex && dex <= species.length ? species[dex - 1] + (/ex$/i.test(native) ? ' ex' : '') : native
+          name = dex >= 1 && dex <= species.length ? species[dex - 1] + (/ex$/i.test(native) ? ' ex' : '') : native
         }
         const vs: [string, number][] = []
         const seen = new Set<string>()

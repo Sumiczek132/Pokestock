@@ -50,11 +50,11 @@ class Prices(val date: String, private val map: HashMap<Int, IntArray>) {
                         "prices" -> {
                             r.beginObject()
                             while (r.hasNext()) {
-                                val id = r.nextName().toInt()
+                                val id = r.nextName().toIntOrNull() ?: run { r.skipValue(); continue }
                                 val a = IntArray(6)
                                 r.beginArray()
                                 var i = 0
-                                while (r.hasNext()) { val x = r.nextInt(); if (i < 6) a[i] = x; i++ }
+                                while (r.hasNext()) { val x = r.nextString().toDoubleOrNull()?.toInt() ?: 0; if (i < 6) a[i] = x; i++ }
                                 r.endArray()
                                 map[id] = a
                             }
@@ -114,12 +114,12 @@ class History(val days: List<String>, val weeks: List<String>, private val d: Ha
         private fun readSeries(r: JsonReader, into: HashMap<Int, Array<IntArray>>) {
             r.beginObject()
             while (r.hasNext()) {
-                val id = r.nextName().toInt()
+                val id = r.nextName().toIntOrNull() ?: run { r.skipValue(); continue }
                 val cols = ArrayList<IntArray>(2)
                 r.beginArray()
                 while (r.hasNext()) {
                     val xs = ArrayList<Int>()
-                    r.beginArray(); while (r.hasNext()) xs.add(r.nextInt()); r.endArray()
+                    r.beginArray(); while (r.hasNext()) xs.add(r.nextString().toDoubleOrNull()?.toInt() ?: 0); r.endArray()
                     cols.add(xs.toIntArray())
                 }
                 r.endArray()

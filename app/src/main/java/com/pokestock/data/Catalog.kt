@@ -1,6 +1,7 @@
 package com.pokestock.data
 
 import android.util.JsonReader
+import android.util.JsonToken
 import java.io.File
 import java.io.InputStreamReader
 import java.util.zip.GZIPInputStream
@@ -114,7 +115,7 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
                 r.beginObject()
                 while (r.hasNext()) {
                     when (r.nextName()) {
-                        "built" -> built = r.nextString()
+                        "built" -> built = str(r)
                         "sets" -> {
                             r.beginArray()
                             while (r.hasNext()) sets.add(readSet(r, sets.size))
@@ -139,16 +140,16 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
             r.beginObject()
             while (r.hasNext()) {
                 when (r.nextName()) {
-                    "k" -> k = r.nextString()
-                    "lang" -> lang = r.nextString()
-                    "id" -> id = r.nextString()
-                    "name" -> name = r.nextString()
-                    "nameEn" -> nameEn = r.nextString()
-                    "series" -> series = r.nextString()
-                    "serieId" -> serieId = r.nextString()
-                    "date" -> date = r.nextString()
-                    "total" -> total = r.nextInt()
-                    "abbr" -> abbr = r.nextString()
+                    "k" -> k = str(r)
+                    "lang" -> lang = str(r)
+                    "id" -> id = str(r)
+                    "name" -> name = str(r)
+                    "nameEn" -> nameEn = str(r)
+                    "series" -> series = str(r)
+                    "serieId" -> serieId = str(r)
+                    "date" -> date = str(r)
+                    "total" -> total = num(r)
+                    "abbr" -> abbr = str(r)
                     else -> r.skipValue()
                 }
             }
@@ -156,29 +157,46 @@ class Catalog(val sets: MutableList<CardSet>, val built: String) {
             return CardSet(idx, k, lang, id, name, nameEn, series, serieId, date, total, abbr)
         }
 
+        // Lenient readers: one odd value must never stop the whole card list loading.
+        private fun str(r: JsonReader): String = when (r.peek()) {
+            JsonToken.STRING, JsonToken.NUMBER -> r.nextString()
+            JsonToken.BOOLEAN -> r.nextBoolean().toString()
+            else -> { r.skipValue(); "" }
+        }
+        private fun num(r: JsonReader): Int = when (r.peek()) {
+            JsonToken.NUMBER, JsonToken.STRING -> r.nextString().toDoubleOrNull()?.toInt() ?: 0
+            else -> { r.skipValue(); 0 }
+        }
+
         private fun readCard(r: JsonReader, sets: List<CardSet>) {
             r.beginArray()
-            val si = r.nextInt()
-            val localId = r.nextString()
-            val name = r.nextString()
-            val rarity = r.nextString()
-            val dex = r.nextInt()
-            val cat = r.nextString()
+            val si = num(r)
+            val localId = str(r)
+            val name = str(r)
+            val rarity = str(r)
+            val dex = num(r)
+            val cat = str(r)
             val vars = ArrayList<Variant>(3)
-            r.beginArray()
-            while (r.hasNext()) {
+            if (r.peek() == JsonToken.BEGIN_ARRAY) {
                 r.beginArray()
-                val k = r.nextString()
-                val cm = r.nextInt()
+                while (r.hasNext()) {
+                    if (r.peek() != JsonToken.BEGIN_ARRAY) { r.skipValue(); continue }
+                    r.beginArray()
+                    val k = str(r)
+                    val cm = if (r.hasNext()) num(r) else 0
+                    while (r.hasNext()) r.skipValue()
+                    r.endArray()
+                    if (k.isNotEmpty()) vars.add(Variant(k, cm))
+                }
                 r.endArray()
-                vars.add(Variant(k, cm))
-            }
-            r.endArray()
-            val ja = r.nextString()
-            val img = r.nextInt() == 1
+            } else r.skipValue()
+            val ja = if (r.hasNext()) str(r) else ""
+            val img = if (r.hasNext()) num(r) == 1 else true
             while (r.hasNext()) r.skipValue()
             r.endArray()
-            val set = sets[si]
+            val set = sets.getOrNull(si) ?: return
+            if (name.isEmpty() || name == "undefined") return
+            if (vars.isEmpty()) vars.add(Variant("normal", 0))
             set.cards.add(Card("${set.key}:$localId", set, localId, name, normaliseRarity(rarity), dex, cat, vars, ja, img))
         }
 

@@ -35,6 +35,8 @@ object AppState {
     var updating by mutableStateOf(false)
     lateinit var store: CollectionStore
     private lateinit var dir: File
+    private var prefs: android.content.SharedPreferences? = null
+    var loadError by mutableStateOf("")
     private val lock = Mutex()
 
     val lastPriceDate: String get() = prices.date
@@ -42,6 +44,7 @@ object AppState {
 
     suspend fun init(ctx: Context) = withContext(Dispatchers.IO) {
         dir = ctx.filesDir
+        prefs = ctx.getSharedPreferences("data", Context.MODE_PRIVATE)
         val doc = try { CollectionDoc.load(File(dir, "collection.json")) } catch (e: Exception) { CollectionDoc() }
         store = CollectionStore(File(dir, "collection.json"), doc) { version++ }
         loadLocal()
@@ -50,11 +53,15 @@ object AppState {
 
     private fun loadLocal() {
         val cf = File(dir, "catalog.json.gz")
-        val cat = if (cf.exists()) try { Catalog.load(cf) } catch (e: Exception) { Catalog.empty() } else Catalog.empty()
+        var cat = Catalog.empty()
+        if (cf.exists()) {
+            try { cat = Catalog.load(cf) } catch (e: Exception) { loadError = "Card list couldn't load (${e.message}). Tap Update to download it again." }
+            if (cat.sets.isEmpty()) { cf.delete(); prefs?.edit()?.remove("catalogBuilt")?.apply() }
+        }
         store.doc.custom.values.forEach { cat.addCustom(it) }
         catalog = cat
         val pf = File(dir, "prices.json.gz")
-        prices = if (pf.exists()) try { Prices.load(pf) } catch (e: Exception) { Prices.empty() } else Prices.empty()
+        prices = if (pf.exists()) try { Prices.load(pf) } catch (e: Exception) { pf.delete(); prefs?.edit()?.remove("pricesDate")?.apply(); Prices.empty() } else Prices.empty()
         val hf = File(dir, "history.json.gz")
         history = if (hf.exists()) try { History.load(hf) } catch (e: Exception) { History.empty() } else History.empty()
         version++
@@ -93,7 +100,8 @@ object AppState {
                         prefs.edit().putLong("historyAt", System.currentTimeMillis()).apply()
                     }
                 }
-                if (changed) loadLocal()
+                if (changed) { loadError = ""; loadLocal() }
+                if (catalog.sets.none { !it.custom }) throw RuntimeException(loadError.ifEmpty { "the card list didn't load" })
                 prefs.edit().putLong("checkedAt", System.currentTimeMillis()).apply()
                 status = if (changed) "Updated: prices from ${prices.date}" else "Already up to date (prices from ${prices.date})"
                 status

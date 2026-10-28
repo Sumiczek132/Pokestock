@@ -109,6 +109,7 @@ fun SyncScreen() {
                 val d = AppState.prices.date.takeIf { it.isNotEmpty() }?.let { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM yyyy")) }
                 SettingText("Last update", (d?.let { "Prices from $it" } ?: "No prices yet") + ". Cardmarket prices converted to £ every morning.")
                 if (AppState.status.isNotEmpty()) Sub(AppState.status)
+                if (AppState.loadError.isNotEmpty()) Sub(AppState.loadError, color = p.down)
                 Btn(if (AppState.updating) "Updating…" else "Update now", Modifier.fillMaxWidth(), primary = true, enabled = !AppState.updating) {
                     scope.launch { say(AppState.update(ctx)) }
                 }
