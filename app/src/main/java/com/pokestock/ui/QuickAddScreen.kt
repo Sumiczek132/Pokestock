@@ -48,7 +48,7 @@ import com.pokestock.data.Card
 import com.pokestock.data.Labels
 import com.pokestock.data.pounds
 
-private data class Checked(val id: Long, val card: Card, val variant: String, val hadBefore: Int, val added: Boolean)
+private data class Checked(val id: Long, val card: Card, val variant: String, val hadBefore: Int, val added: Int)
 
 /** Type card numbers from one set to see straight away whether you need them, and add them with one tap. */
 @Composable
@@ -73,9 +73,14 @@ fun QuickAddScreen(setKey: String) {
     fun submit() {
         val c = findCard(input) ?: run { input = ""; return }
         val k = if (version == "reverse" && c.variants.any { it.key == "reverse" }) "reverse" else Binder.mainVariant(c)
-        val before = AppState.store.qty(c.key, k) + AppState.store.slabsOf(c.key, k).size
         if (autoAdd) AppState.store.addOne(c.key, k)
-        log.add(0, Checked(System.nanoTime(), c, k, before, autoAdd))
+        // Typing the same card again moves it back to the top and counts it again, instead of a new row.
+        val i = log.indexOfFirst { it.card.key == c.key && it.variant == k }
+        if (i >= 0) { val e = log.removeAt(i); log.add(0, e.copy(added = e.added + if (autoAdd) 1 else 0)) }
+        else {
+            val before = AppState.store.qty(c.key, k) + AppState.store.slabsOf(c.key, k).size - if (autoAdd) 1 else 0
+            log.add(0, Checked(System.nanoTime(), c, k, before, if (autoAdd) 1 else 0))
+        }
         input = ""
     }
 
@@ -95,15 +100,30 @@ fun QuickAddScreen(setKey: String) {
                 Btn("Check", primary = true) { submit() }
             }
             Chip(if (autoAdd) "Adding each card to my collection ✓" else "Just checking (tap to add as I go)", autoAdd) { autoAdd = !autoAdd }
+            val total = log.sumOf { it.added }
+            if (total > 0) {
+                val value = log.sumOf { (AppState.unitPrice(it.card, it.variant) ?: 0).toLong() * it.added }
+                Text("Added this session: $total card${if (total == 1) "" else "s"} · ${pounds(value)}", fontWeight = FontWeight.SemiBold, color = p.fg)
+            }
         }
         LazyColumn(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(log, key = { it.id }) { e -> QuickRow(e) { AppState.store.addOne(e.card.key, e.variant); val i = log.indexOf(e); if (i >= 0) log[i] = e.copy(added = true) } }
+            items(log, key = { it.id }) { e ->
+                QuickRow(e,
+                    onAdd = { AppState.store.addOne(e.card.key, e.variant); val i = log.indexOfFirst { it.id == e.id }; if (i >= 0) log[i] = log[i].copy(added = log[i].added + 1) },
+                    onRemove = {
+                        val i = log.indexOfFirst { it.id == e.id }
+                        if (i >= 0 && log[i].added > 0) {
+                            AppState.store.setQty(e.card.key, e.variant, AppState.store.qty(e.card.key, e.variant) - 1)
+                            log[i] = log[i].copy(added = log[i].added - 1)
+                        }
+                    })
+            }
         }
     }
 }
 
 @Composable
-private fun QuickRow(e: Checked, onAdd: () -> Unit) {
+private fun QuickRow(e: Checked, onAdd: () -> Unit, onRemove: () -> Unit) {
     val p = P
     val need = e.hadBefore == 0
     Panel(padding = 10.dp) {
@@ -116,8 +136,10 @@ private fun QuickRow(e: Checked, onAdd: () -> Unit) {
                 Text(if (need) "NEED IT" else "Have ×${e.hadBefore}", fontWeight = FontWeight.ExtraBold, color = if (need) p.up else p.muted, fontSize = 13.sp)
                 Text("${e.card.localId} ${e.card.name}", style = Type.strong, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Sub(Labels.variantLabel(e.card, e.variant) + " · " + pounds(AppState.unitPrice(e.card, e.variant)), maxLines = 1)
+                if (e.added > 0) Text("Added ×${e.added}", color = p.up, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             }
-            if (e.added) Text("Added", color = p.up, fontWeight = FontWeight.SemiBold) else Btn("Add") { onAdd() }
+            if (e.added > 0) { Btn("−") { onRemove() }; Spacer(Modifier.width(6.dp)) }
+            Btn(if (e.added > 0) "+1" else "Add", primary = e.added == 0) { onAdd() }
         }
     }
 }
