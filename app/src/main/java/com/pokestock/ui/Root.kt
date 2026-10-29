@@ -62,6 +62,7 @@ object Nav {
     var setFilter by mutableStateOf("all")
     var setGroup by mutableStateOf("all")
     var setSort by mutableStateOf("num")
+    var setGrid by mutableStateOf(false)
     var dexFilter by mutableStateOf("all")
     var dexGen by mutableIntStateOf(0)
     var dexQuery by mutableStateOf("")
@@ -75,7 +76,9 @@ object Nav {
     var colView by mutableStateOf("sets")              // "sets" or "binders" in the Collection tab
     val collapsed = androidx.compose.runtime.mutableStateListOf<String>()   // folded series headings
     var collapsedLoaded = false
-    var ownedFirst by mutableStateOf(true)    // card key shown full screen
+    var ownedFirst by mutableStateOf(true)
+    /** A page can take the back button first (e.g. quick add shows its summary). Return true if handled. */
+    var pageBack: (() -> Boolean)? = null
 
     // Scroll positions, kept so going back returns to the same place.
     val setList = androidx.compose.foundation.lazy.LazyListState()
@@ -128,6 +131,7 @@ fun PokestockRoot(startOnSync: Boolean) {
                 pg == "trade" -> TradeScreen()
                 pg == "dupes" -> DuplicatesScreen()
                 pg == "scan" -> ScanScreen()
+                pg == "shop" -> ShopScreen()
                 pg == "dexbinder" -> DexBinderScreen()
                 pg.startsWith("binder:") -> SetBinderScreen(pg.removePrefix("binder:"))
                 pg.startsWith("quick:") -> QuickAddScreen(pg.removePrefix("quick:"))
@@ -149,7 +153,8 @@ fun PokestockRoot(startOnSync: Boolean) {
         BackHandler(Nav.card != null && Nav.fullImage == null) { Nav.card = null }
         BackHandler(Nav.card == null && Nav.slot != null) { Nav.slot = null }
         BackHandler(Nav.card == null && Nav.slot == null && Nav.page != null) {
-            if (Nav.page == "trade" && TradeState.picking) TradeState.picking = false
+            if (Nav.pageBack?.invoke() == true) Unit
+            else if (Nav.page == "trade" && TradeState.picking) TradeState.picking = false
             else if (Nav.page == "trade" && TradeState.selecting) TradeState.reset() else Nav.page = null
         }
         BackHandler(Nav.card == null && Nav.slot == null && Nav.tab == "collection" && Nav.openSet != null) { Nav.openSet = null }

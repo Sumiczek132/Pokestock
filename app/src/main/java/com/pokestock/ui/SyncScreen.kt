@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pokestock.data.AppState
 import com.pokestock.data.AppUpdate
+import com.pokestock.data.Backups
 import com.pokestock.data.CollectionDoc
 import com.pokestock.data.Data
 import com.pokestock.data.DriveSync
@@ -76,6 +77,22 @@ fun SyncScreen() {
         if (uri != null) scope.launch(Dispatchers.IO) {
             val ok = runCatching { ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(AppState.store.exportJson().toByteArray()) } }.isSuccess
             withContext(Dispatchers.Main) { say(if (ok) "Backup saved" else "Couldn't save the backup") }
+        }
+    }
+    var restoreAsk by remember { mutableStateOf<Pair<String, CollectionDoc>?>(null) }
+    var backups by remember { mutableStateOf<List<Backups.Entry>?>(null) }
+    var backupUri by remember { mutableStateOf(Backups.driveUri(ctx)) }
+    val driveInstalled = remember { runCatching { ctx.packageManager.getPackageInfo("com.google.android.apps.docs", 0); true }.getOrDefault(false) }
+    val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) { Backups.chooseDrive(ctx, uri); backupUri = uri; scope.launch { Backups.weeklyToDrive(ctx, force = true)?.let(say) } }
+    }
+    val restoreFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch(Dispatchers.IO) {
+            try {
+                val text = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }.toString(Charsets.UTF_8)
+                val doc = CollectionDoc.fromJson(JSONObject(text))
+                withContext(Dispatchers.Main) { restoreAsk = "the file you picked" to doc }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { say("Couldn't read that file: ${e.message}") } }
         }
     }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -145,6 +162,17 @@ fun SyncScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (driveUri == null) {
                     SettingText("Sync through a shared file", "One phone creates the file in a Drive folder shared with the other person. The other phone picks that same file. After that, both phones sync whenever they open the app with signal.")
+                    if (!driveInstalled) {
+                        Sub("The Google Drive app isn't on this phone, so the file picker can only show phone storage. Install it and sign in, then come back here.", color = p.down)
+                        Btn("Get Google Drive", Modifier.fillMaxWidth()) {
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.docs")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                .onFailure { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.docs"))) }
+                        }
+                    }
+                    Panel(padding = 10.dp) {
+                        Text("The picker opens on your phone's storage. Tap ☰ (top left) and choose Drive, then pick the folder. If Drive isn't in that list, open the Google Drive app once and sign in.",
+                            color = p.fg, fontSize = 13.sp)
+                    }
                     Btn("Create the sync file in Drive", Modifier.fillMaxWidth(), primary = true) { createSync.launch("pokestock-sync.json") }
                     Btn("Pick an existing sync file", Modifier.fillMaxWidth()) { openSync.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }
                 } else {
@@ -167,6 +195,52 @@ fun SyncScreen() {
                 Btn("Save a backup", Modifier.fillMaxWidth()) { exportBackup.launch("pokestock-backup-${LocalDate.now()}.json") }
                 Btn("Add a card that isn't listed yet", Modifier.fillMaxWidth()) { Nav.addCustom = true }
             }
+        }
+
+        SectionHead("Backups")
+        Panel {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SettingText("Automatic backups", "One a day on this phone (kept 2 weeks, Mondays kept 3 months), plus one right before every sync. Restore one if a sync or a mis-tap goes wrong.")
+                val list = backups
+                if (list == null) Btn("Restore a backup", Modifier.fillMaxWidth()) { scope.launch { backups = Backups.list(ctx) } }
+                else {
+                    if (list.isEmpty()) Sub("No backups yet. The first one is made the next time the app opens.")
+                    list.forEach { e ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(e.label, color = p.fg, fontSize = 15.sp); Sub("${String.format("%,d", e.cards)} cards") }
+                            Btn("Restore") { scope.launch(Dispatchers.IO) {
+                                val doc = runCatching { Backups.read(e.file) }.getOrNull()
+                                withContext(Dispatchers.Main) { if (doc != null) restoreAsk = e.label.replaceFirstChar { it.lowercase() } to doc else say("That backup couldn't be read") }
+                            } }
+                        }
+                    }
+                    Btn("Hide backups", Modifier.fillMaxWidth()) { backups = null }
+                }
+                Btn("Restore from a file", Modifier.fillMaxWidth()) { restoreFile.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }
+                if (backupUri == null) {
+                    SettingText("Weekly backup in Google Drive", "Keeps a copy off the phone too, updated once a week when the morning update runs. In the picker tap ☰ and choose Drive.")
+                    Btn("Set up the Drive backup", Modifier.fillMaxWidth()) { createBackup.launch("pokestock-weekly-backup.json") }
+                } else {
+                    SettingText("Weekly backup in Google Drive", Backups.driveLast(ctx).takeIf { it.isNotEmpty() }?.let { "Last saved $it" } ?: "Not saved yet")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Btn("Back up now", Modifier.weight(1f)) { scope.launch { Backups.weeklyToDrive(ctx, force = true)?.let(say) } }
+                        Btn("Stop", Modifier.weight(1f)) { Backups.forgetDrive(ctx); backupUri = null }
+                    }
+                }
+            }
+        }
+        restoreAsk?.let { (what, doc) ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { restoreAsk = null },
+                containerColor = p.surface,
+                title = { Text("Restore this backup?", color = p.fg) },
+                text = { Text("Your collection goes back to exactly how it was in $what (${String.format("%,d", doc.items.values.sumOf { it.q } + doc.slabs.values.count { !it.deleted })} cards). " +
+                    "Anything changed since is undone, and the other phone gets the restore at the next sync. A backup of how things are now is saved first, so you can undo this.", color = p.muted) },
+                confirmButton = { Btn("Restore", primary = true) {
+                    Backups.beforeRestore(ctx); AppState.store.restoreFrom(doc); AppState.refreshCustom(); restoreAsk = null; backups = null; say("Restored")
+                } },
+                dismissButton = { Btn("Cancel") { restoreAsk = null } },
+            )
         }
 
         SectionHead("Card database")

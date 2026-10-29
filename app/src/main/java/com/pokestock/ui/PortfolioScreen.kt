@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -97,6 +98,7 @@ fun PortfolioScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 NavCard(Icons.Outlined.SwapHoriz, "Trade binder", "${tr.sumOf { it.second } + ts.size} cards · ${pounds(tv)} · tap to trade") { Nav.page = "trade" }
                 NavCard(Icons.Outlined.ContentCopy, "Duplicates", "Spare copies worth putting in the trade binder") { Nav.page = "dupes" }
+                NavCard(Icons.Outlined.Storefront, "Shop mode", "At a card shop: punch in a number, see if you need it and what to pay") { Nav.page = "shop" }
                 NavCard(Icons.Outlined.TrendingUp, "Top 100", "Your most valuable cards, what's going up and down") { Nav.page = "top" }
             }
             SectionHead("Most valuable")

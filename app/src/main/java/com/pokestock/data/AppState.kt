@@ -49,6 +49,7 @@ object AppState {
         store = CollectionStore(File(dir, "collection.json"), doc) { version++ }
         loadLocal()
         ready = true
+        Backups.daily(ctx)
     }
 
     private fun loadLocal() {

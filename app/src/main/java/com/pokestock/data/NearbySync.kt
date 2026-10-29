@@ -34,25 +34,57 @@ object NearbySync {
     private var peer: String? = null
     private var sent = false
     private var received = false
+    private var attempt = 0
+    private var appCtx: Context? = null
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val giveUp = Runnable { if (running && peer == null) retry("Couldn't find the other phone") }
 
+    /** Starts a sync. Retries by itself (up to 3 goes) when the connection drops or fails. */
     fun start(ctx: Context) {
         if (running) return
+        attempt = 1
+        begin(ctx)
+    }
+
+    private fun begin(ctx: Context) {
         val c = Nearby.getConnectionsClient(ctx.applicationContext)
+        appCtx = ctx.applicationContext
         client = c; running = true; sent = false; received = false; peer = null
-        status = "Looking for the other phone… open Sync on it and tap the same button."
+        status = if (attempt == 1) "Looking for the other phone… open Sync on it and tap the same button."
+            else "Trying again ($attempt of 3)… keep Sync open on both phones."
+        main.removeCallbacks(giveUp); main.postDelayed(giveUp, 45_000)
         val name = android.os.Build.MODEL ?: "Phone"
         c.startAdvertising(name, SERVICE, lifecycle, AdvertisingOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build())
-            .addOnFailureListener { fail("Couldn't start: ${it.message}") }
+            .addOnFailureListener { if (peer == null) retry("Couldn't start (${it.message})") }
         c.startDiscovery(SERVICE, discovery, DiscoveryOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build())
             .addOnFailureListener { fail("Couldn't search: ${it.message}") }
     }
 
+    private var restart: Runnable? = null
+
     fun stop() {
+        main.removeCallbacks(giveUp); restart?.let { main.removeCallbacks(it) }; waiting = false
         client?.apply { stopAdvertising(); stopDiscovery(); stopAllEndpoints() }
         running = false
     }
 
     private fun fail(msg: String) { status = msg; stop() }
+
+    /** Something went wrong mid-sync: hang up, wait a moment and start again, up to 3 goes in all. */
+    private var waiting = false
+    private fun retry(why: String) {
+        if (received || waiting) return
+        client?.apply { stopAdvertising(); stopDiscovery(); stopAllEndpoints() }
+        running = false
+        val ctx = appCtx
+        if (attempt >= 3 || ctx == null) { status = "$why. Tried 3 times — make sure Bluetooth and Wi-Fi are on on both phones, then tap Sync again."; return }
+        attempt++
+        status = "$why, trying again…"
+        running = true
+        waiting = true
+        restart = Runnable { waiting = false; running = false; begin(ctx) }
+        main.postDelayed(restart!!, 2500)
+    }
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
@@ -76,11 +108,14 @@ object NearbySync {
                 val bytes = AppState.store.exportJson().toByteArray()
                 client?.sendPayload(id, Payload.fromStream(ByteArrayInputStream(bytes)))
                 sent = true
-            } else if (peer == null) status = "Connection failed, trying again…"
+            } else if (peer == null) {
+                // Both phones ask to connect at once and one request usually loses; only retry if nothing connected.
+                status = "Connecting…"
+                main.postDelayed({ if (running && peer == null && !received) retry("Connection failed") }, 8000)
+            }
         }
         override fun onDisconnected(id: String) {
-            if (!received) status = "The other phone disconnected before finishing. Try again."
-            running = false
+            if (!received) retry("The other phone disconnected before finishing") else running = false
         }
     }
 
@@ -89,11 +124,12 @@ object NearbySync {
             val input = payload.asStream()?.asInputStream() ?: return
             // Read the stream as it arrives; it ends when the other phone has sent everything.
             Thread {
-                val main = android.os.Handler(android.os.Looper.getMainLooper())
                 try {
                     val text = input.use { it.readBytes() }.toString(Charsets.UTF_8)
                     val other = CollectionDoc.fromJson(JSONObject(text))
+                    appCtx?.let { Backups.beforeSync(it) }
                     main.post {
+                        main.removeCallbacks(giveUp)
                         val n = AppState.store.mergeIn(other)
                         AppState.refreshCustom()
                         received = true
@@ -102,7 +138,7 @@ object NearbySync {
                         main.postDelayed({ stop() }, 4000)
                     }
                 } catch (e: Exception) {
-                    main.post { fail("Sync failed: ${e.message}") }
+                    main.post { retry("Sync failed (${e.message})") }
                 }
             }.start()
         }

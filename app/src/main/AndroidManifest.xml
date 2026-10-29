@@ -19,6 +19,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
 
+    <queries>
+        <package android:name="com.google.android.apps.docs" />
+    </queries>
+
     <application android:largeHeap="true"
         android:name=".PokestockApp"
         android:allowBackup="true"

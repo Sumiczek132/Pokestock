@@ -250,6 +250,31 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
         changed()
     }
 
+    /**
+     * Puts the collection back exactly as it was in [backup]. Everything is stamped as changed now,
+     * so the restore also wins when the phones sync next (otherwise newer changes on the other phone would undo it).
+     */
+    fun restoreFrom(backup: CollectionDoc) {
+        val t = now()
+        fun <V> redo(mine: HashMap<String, V>, theirs: Map<String, V>, stamp: (V) -> V, empty: (V) -> V) {
+            val keys = mine.keys + theirs.keys
+            for (k in keys) { val b = theirs[k]; mine[k] = if (b != null) stamp(b) else empty(mine[k]!!) }
+        }
+        redo(doc.items, backup.items, { it.copy(t = t) }, { it.copy(q = 0, t = t) })
+        redo(doc.slabs, backup.slabs, { it.copy(t = t) }, { it.copy(deleted = true, t = t) })
+        redo(doc.slotWants, backup.slotWants, { it.copy(t = t) }, { Stamped(false, t) })
+        redo(doc.wish, backup.wish, { it.copy(t = t) }, { Stamped(false, t) })
+        redo(doc.overrides, backup.overrides, { it.copy(t = t) }, { Stamped(-1, t) })
+        redo(doc.custom, backup.custom, { it.copy(t = t) }, { it.copy(deleted = true, t = t) })
+        redo(doc.trade, backup.trade, { it.copy(t = t) }, { Stamped(0, t) })
+        redo(doc.tradeSlab, backup.tradeSlab, { it.copy(t = t) }, { Stamped(false, t) })
+        redo(doc.binderMode, backup.binderMode, { it.copy(t = t) }, { Stamped("", t) })
+        redo(doc.alerts, backup.alerts, { it.copy(t = t) }, { Stamped(-1, t) })
+        backup.trades.forEach { (k, v) -> if (k !in doc.trades) doc.trades[k] = v }
+        for (k in doc.binder.keys + backup.binder.keys) doc.binder[k] = Stamped(backup.binder[k]?.v ?: "", t)
+        changed()
+    }
+
     fun mergeIn(other: CollectionDoc): Int { val n = doc.merge(other); if (n > 0) changed(); return n }
     fun invalidate() { ownIndex = null; slabIndex = null }
 

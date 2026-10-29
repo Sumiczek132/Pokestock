@@ -42,14 +42,27 @@ object DriveSync {
         if (busy) return@withContext status
         busy = true
         try {
-            val text = try { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.toString(Charsets.UTF_8) } catch (_: Exception) { null }
+            // Drive can be slow to answer on poor signal, so give it three goes before giving up.
+            var text: String? = null
+            for (attempt in 1..3) {
+                text = try { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.toString(Charsets.UTF_8) } catch (_: Exception) { null }
+                if (text != null) break
+                status = "Drive didn't answer, trying again ($attempt of 3)…"
+                kotlinx.coroutines.delay(2500L * attempt)
+            }
             var taken = 0
             if (!text.isNullOrBlank()) {
                 val other = CollectionDoc.fromJson(JSONObject(text))
+                Backups.beforeSync(ctx)
                 withContext(Dispatchers.Main) { taken = AppState.store.mergeIn(other); AppState.refreshCustom() }
             }
             val out = AppState.store.exportJson().toByteArray()
-            ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(out) } ?: throw RuntimeException("can't write to the file")
+            var wrote = false; var err: Exception? = null
+            for (attempt in 1..3) {
+                try { ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(out) } ?: throw RuntimeException("can't write to the file"); wrote = true; break }
+                catch (e: Exception) { err = e; kotlinx.coroutines.delay(2500L * attempt) }
+            }
+            if (!wrote) throw err ?: RuntimeException("can't write to the file")
             val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMM, HH:mm"))
             prefs(ctx).edit().putString("driveLast", now).apply()
             status = if (taken > 0) "Synced $now: took $taken changes." else "Synced $now."

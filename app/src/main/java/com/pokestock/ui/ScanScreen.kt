@@ -89,6 +89,30 @@ fun ScanScreen() {
     LaunchedEffect(Unit) { if (!granted) ask.launch(Manifest.permission.CAMERA) }
     var found by remember { mutableStateOf<List<Card>>(emptyList()) }
     var lastText by remember { mutableStateOf("") }
+    // Bulk mode: every card held up is added by itself, with a beep.
+    var bulk by remember { mutableStateOf(false) }
+    var reverse by remember { mutableStateOf(false) }
+    var summary by remember { mutableStateOf(false) }
+    val session = remember { AddSession() }
+    val auto = remember { AutoAdder() }
+    val beep = remember { runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 70) }.getOrNull() }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    DisposableEffect(Unit) {
+        Nav.pageBack = { if (session.total > 0 && !summary) { summary = true; true } else false }
+        onDispose { Nav.pageBack = null; beep?.release() }
+    }
+    fun onHits(hits: List<Card>) {
+        if (!bulk || summary) return
+        val c = auto.next(hits.firstOrNull()) ?: return
+        val k = if (reverse && c.variants.any { it.key == "reverse" }) "reverse" else com.pokestock.data.Binder.mainVariant(c)
+        session.record(c, k, true)
+        runCatching { beep?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120) }
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+    }
+    if (summary) {
+        SessionSummary(session, "Scan session", onMore = { summary = false; auto.reset() }, onDone = { Nav.page = null })
+        return
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (granted) {
@@ -110,6 +134,7 @@ fun ScanScreen() {
                         recognizer.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
                             .addOnSuccessListener { r ->
                                 val hits = CardReader.match(r.text)
+                                onHits(hits)
                                 if (hits.isNotEmpty()) { found = hits; lastText = r.text.lines().firstOrNull { CardReaderHint.looksLikeNumber(it) } ?: "" }
                             }
                             .addOnCompleteListener { busy = false; proxy.close() }
@@ -130,15 +155,60 @@ fun ScanScreen() {
             Btn("Allow camera", primary = true) { ask.launch(Manifest.permission.CAMERA) }
         }
         Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-            PageHeaderOnDark("Scan a card") { Nav.page = null }
-            Text("Point at the bottom corner of the card so the set code and number (e.g. PAR 045/182) are sharp.",
-                color = Color.White, modifier = Modifier.padding(horizontal = 16.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x88000000)).padding(8.dp))
+            PageHeaderOnDark(if (bulk) "Bulk scan" else "Scan a card") { if (session.total > 0) summary = true else Nav.page = null }
+            androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp)).background(p.bg.copy(alpha = 0.85f)).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("Look up", !bulk) { bulk = false }
+                Chip("Bulk add", bulk) { bulk = true; auto.reset() }
+                if (bulk) Chip("Reverse holo", reverse) { reverse = !reverse }
+            }
+            Text(if (bulk) "Hold each card up so the number at the bottom is sharp. It beeps when added. Same card again? Take it away and hold it up again."
+                else "Point at the bottom corner of the card so the set code and number (e.g. PAR 045/182) are sharp.",
+                color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x88000000)).padding(8.dp))
         }
-        if (found.isNotEmpty()) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(12.dp)
+        if (bulk) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(12.dp)
+            .clip(RoundedCornerShape(16.dp)).background(p.bg).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (session.total == 0) "Nothing added yet" else "${session.total} added · ${com.pokestock.data.pounds(session.value)}",
+                    color = p.fg, style = Type.strong, modifier = Modifier.weight(1f).padding(4.dp))
+                if (session.total > 0) Btn("Finish", primary = true) { summary = true }
+            }
+            session.log.take(3).forEach { e -> SessionRow(e, session) }
+        }
+        else if (found.isNotEmpty()) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(12.dp)
             .clip(RoundedCornerShape(16.dp)).background(p.bg).padding(8.dp)) {
             Sub(if (lastText.isNotEmpty()) "Read: $lastText" else "Matches", modifier = Modifier.padding(4.dp))
             found.forEach { c -> CardRow(c) }
         }
+    }
+}
+
+/**
+ * Decides when a card held up to the camera should be added: it has to be read the same twice in a row
+ * (so a blurry misread doesn't count), and the same card only counts again after it has left the frame.
+ */
+class AutoAdder {
+    private var candidate: String? = null
+    private var streak = 0
+    private var lastAdded: String? = null
+    private var goneSince = 0L
+    private var clearedSinceAdd = true
+
+    fun reset() { candidate = null; streak = 0; lastAdded = null; clearedSinceAdd = true; goneSince = 0 }
+
+    fun next(top: Card?): Card? {
+        val now = System.currentTimeMillis()
+        if (top == null) {
+            if (goneSince == 0L) goneSince = now
+            if (now - goneSince > 700) { clearedSinceAdd = true; candidate = null; streak = 0 }
+            return null
+        }
+        goneSince = 0
+        if (top.key == candidate) streak++ else { candidate = top.key; streak = 1 }
+        if (streak < 2) return null
+        if (top.key == lastAdded && !clearedSinceAdd) return null
+        lastAdded = top.key; clearedSinceAdd = false; streak = 0
+        return top
     }
 }
 

@@ -134,6 +134,8 @@ private fun SetList() {
                 Box(Modifier.weight(1f)) { SearchField(Nav.colQuery, "Search every ${if (lang == "EN") "English" else if (lang == "JA") "Japanese" else "Chinese"} card or set") { Nav.colQuery = it } }
                 Spacer(Modifier.width(8.dp))
                 Btn("Scan") { Nav.page = "scan" }
+                Spacer(Modifier.width(6.dp))
+                Btn("Shop") { Nav.page = "shop" }
             }
             if (cat.sets.isEmpty()) { Gap(); Panel { Text("The card list downloads the first time you're online. Open the Sync tab and tap Update.", color = p.muted) } }
         }
@@ -289,12 +291,44 @@ private fun SetView(s: CardSet) {
                 Spacer(Modifier.width(8.dp))
                 Text("Count every version", color = p.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Chip(if (Nav.setSort == "num") "Sort: number" else "Sort: price", false) { Nav.setSort = if (Nav.setSort == "num") "price" else "num" }
+                Spacer(Modifier.width(6.dp))
+                Chip(if (Nav.setGrid) "Pictures" else "List", Nav.setGrid) { Nav.setGrid = !Nav.setGrid }
             }
             Sub("${list.size} shown")
             Gap(4.dp)
             if (list.isEmpty()) EmptyState(if (Nav.setFilter == "missing") "Nothing missing here. Set complete!" else "No cards match.")
         }
-        items(list, key = { it.key }) { c -> SetCardRow(c) }
+        if (Nav.setGrid) items(list.chunked(3), key = { "g" + it.first().key }) { row ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { c -> SetCardTile(c, Modifier.weight(1f)) }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+        else items(list, key = { it.key }) { c -> SetCardRow(c) }
+    }
+}
+
+/** Picture view: like flicking through a binder, with cards you don't own faded. */
+@Composable
+private fun SetCardTile(c: Card, modifier: Modifier) {
+    @Suppress("UNUSED_VARIABLE") val redraw = AppState.version
+    val p = P
+    val total = AppState.store.total(c.key)
+    val owned = if (Nav.master) AppState.versionsOf(c).count { k -> AppState.store.qty(c.key, k) + AppState.store.slabsOf(c.key, k).size > 0 } else 0
+    val vers = AppState.versionsOf(c).size
+    Column(modifier.clip(RoundedCornerShape(10.dp)).clickable { Nav.openCard(c.key) }.padding(2.dp)) {
+        Box {
+            CardArt(c, Modifier.fillMaxWidth(), dim = total == 0)
+            if (total > 0) Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                Badge(if (Nav.master && vers > 1) "$owned/$vers" else "×$total")
+            }
+            else if (AppState.store.isWish(c.key) || (c.dex > 0 && AppState.store.isSlotWant(c.dex, c.key)))
+                Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) { Badge("★", "want") }
+        }
+        Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(c.localId, style = Type.mono, color = p.faint, fontSize = 11.sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(pounds(AppState.displayPrice(c)), color = if (total > 0) p.fg else p.muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
     }
 }
 
