@@ -61,8 +61,12 @@ fun ShopScreen() {
     val prefs = remember { ctx.getSharedPreferences("settings", Context.MODE_PRIVATE) }
     @Suppress("UNUSED_VARIABLE") val v = AppState.version
     val cat = AppState.catalog
-    var setKey by remember { mutableStateOf(prefs.getString("shopSet", null)?.takeIf { cat.setByKey[it] != null } ?: cat.sets.lastOrNull { it.lang == "EN" && !it.custom }?.key) }
-    var picking by remember { mutableStateOf(setKey == null) }
+    // null = any set: find the card by its printed number ("45/185") and/or name, across every set.
+    var setKey by remember { mutableStateOf(prefs.getString("shopSet", null)?.takeIf { cat.setByKey[it] != null }) }
+    var picking by remember { mutableStateOf(false) }
+    var lang by remember { mutableStateOf("EN") }
+    var matches by remember { mutableStateOf<List<Card>?>(null) }
+    var lastQuery by remember { mutableStateOf("") }
     var input by remember { mutableStateOf("") }
     var card by remember { mutableStateOf<Card?>(null) }
     var variant by remember { mutableStateOf<String?>(null) }
@@ -70,8 +74,9 @@ fun ShopScreen() {
     val say = toast()
     val set = setKey?.let { cat.setByKey[it] }
 
+    fun anySet() { setKey = null; picking = false; card = null; matches = null; prefs.edit().remove("shopSet").apply() }
     fun chooseSet(s: CardSet) {
-        setKey = s.key; picking = false; card = null
+        setKey = s.key; picking = false; card = null; matches = null
         prefs.edit().putString("shopSet", s.key).putString("shopRecent", (listOf(s.key) + (prefs.getString("shopRecent", "") ?: "").split(',').filter { it.isNotEmpty() && it != s.key }).take(6).joinToString(",")).apply()
     }
     fun submit() {
@@ -80,7 +85,18 @@ fun ShopScreen() {
         Regex("^([A-Za-z]{2,4})\\s+([A-Za-z]*\\d+)$").find(t)?.let { m ->
             cat.sets.firstOrNull { !it.custom && it.abbr.equals(m.groupValues[1], true) }?.let { chooseSet(it); t = m.groupValues[2] }
         }
-        val s = setKey?.let { cat.setByKey[it] } ?: return
+        val s = setKey?.let { cat.setByKey[it] }
+        if (s == null) {
+            if (t.isEmpty()) return
+            val found = findAnySet(lang, t)
+            lastQuery = t; input = ""
+            when (found.size) {
+                0 -> { matches = null; card = null; say("Nothing matches \"$t\". Try the number with the total, like 45/185.") }
+                1 -> { matches = null; card = found[0]; variant = Binder.mainVariant(found[0]) }
+                else -> { matches = found; card = null }
+            }
+            return
+        }
         val u = t.uppercase().substringBefore('/')
         val c = s.cards.firstOrNull { it.localId.uppercase().trimStart('0') == u.trimStart('0') || it.localId.uppercase() == u }
             ?: s.cards.firstOrNull { Regex("^([A-Z]*)0*(\\d+)$").find(it.localId.uppercase())?.let { m -> m.groupValues[1] + m.groupValues[2] } == u.replace(Regex("^([A-Z]*)0*"), "$1") }
@@ -88,29 +104,51 @@ fun ShopScreen() {
         card = c; variant = Binder.mainVariant(c); input = ""
     }
 
-    if (picking) { ShopSetPicker(prefs, onBack = { if (setKey == null) Nav.page = null else picking = false }) { chooseSet(it) }; return }
+    if (picking) { ShopSetPicker(prefs, onBack = { picking = false }, onAny = { anySet() }) { chooseSet(it) }; return }
 
     Column(Modifier.fillMaxSize().background(p.bg).statusBarsPadding().navigationBarsPadding().imePadding()) {
         PageHeader("Shop mode") { Nav.page = null }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.surface).border(1.dp, p.line, RoundedCornerShape(12.dp))
                 .clickable { picking = true }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (set != null && set.symbol.isNotEmpty()) {
+                    coil.compose.AsyncImage(set.symbol, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.width(28.dp).heightIn(max = 28.dp))
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Label("Set")
-                    Text(set?.name ?: "Choose a set", style = Type.strong, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(set?.name ?: "Any set", style = Type.strong, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text("Change", color = p.want, fontWeight = FontWeight.SemiBold)
             }
+            if (set == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.weight(1f)) { Segmented(listOf("EN" to "English", "JA" to "Japanese"), lang) { lang = it; matches = null } }
+                Btn("Scan") { Nav.page = "scan" }
+            }
             val c = card
-            if (c == null) Sub("Type the card number and tap Check. In keyboard mode you can type the set code too, like \"SSP 50\".")
-            else ShopResult(c, variant ?: Binder.mainVariant(c), { variant = it }) { k -> AppState.store.addOne(c.key, k); say("Added to your collection") }
+            val m = matches
+            if (c == null && m != null) {
+                Sub("${m.size} cards match \"$lastQuery\". Tap the one in your hand.")
+                m.take(60).forEach { x -> ShopMatchRow(x) { card = x; variant = Binder.mainVariant(x); matches = null } }
+                if (m.size > 60) Sub("Showing the first 60. Add the name or the total to narrow it down, e.g. pikachu 45/185.")
+            }
+            else if (c == null) Sub(if (set == null)
+                "Type the number printed at the bottom with its total, like 45/185. The total tells sets apart, so you don't need to know the symbol. " +
+                "Or tap ABC and type the name, with or without the number (e.g. \"umbreon 95\"). Pick a set above if you know it."
+                else "Type the card number and tap Check. In keyboard mode you can type the set code too, like \"SSP 50\".")
+            else {
+                if (lastQuery.isNotEmpty() && set == null) Text("‹ Back to matches", color = p.want, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { val f = findAnySet(lang, lastQuery); if (f.size > 1) { matches = f; card = null } }.padding(4.dp))
+                ShopResult(c, variant ?: Binder.mainVariant(c), { variant = it }) { k -> AppState.store.addOne(c.key, k); say("Added to your collection") }
+            }
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp)).background(p.surface).border(1.dp, p.line, RoundedCornerShape(12.dp))
                     .padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
                     if (keyboard) {
-                        if (input.isEmpty()) Text("e.g. 45 or SSP 50", color = p.faint, fontSize = 18.sp)
+                        if (input.isEmpty()) Text(if (set == null) "e.g. 45/185 or umbreon" else "e.g. 45 or SSP 50", color = p.faint, fontSize = 18.sp)
                         BasicTextField(input, { input = it.take(14) }, singleLine = true, textStyle = TextStyle(color = p.fg, fontSize = 22.sp, fontWeight = FontWeight.Bold),
                             cursorBrush = SolidColor(p.accent), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.fillMaxWidth())
@@ -118,7 +156,7 @@ fun ShopScreen() {
                 }
                 Btn(if (keyboard) "123" else "ABC") { keyboard = !keyboard }
             }
-            if (!keyboard) NumPad(set?.let { numberPrefixes(it.cards) } ?: emptyList(), onKey = { input = (input + it).take(10) },
+            if (!keyboard) NumPad(set?.let { numberPrefixes(it.cards) } ?: listOf("/", "TG", "GG", "SV"), onKey = { input = (input + it).take(10) },
                 onDelete = { input = input.dropLast(1) }, onEnter = { submit() }, enterLabel = "Check")
         }
     }
@@ -170,7 +208,7 @@ private fun ShopResult(c: Card, variant: String, onVariant: (String) -> Unit, on
 }
 
 @Composable
-private fun ShopSetPicker(prefs: android.content.SharedPreferences, onBack: () -> Unit, onPick: (CardSet) -> Unit) {
+private fun ShopSetPicker(prefs: android.content.SharedPreferences, onBack: () -> Unit, onAny: () -> Unit, onPick: (CardSet) -> Unit) {
     val p = P
     var q by remember { mutableStateOf("") }
     var lang by remember { mutableStateOf("EN") }
@@ -185,6 +223,13 @@ private fun ShopSetPicker(prefs: android.content.SharedPreferences, onBack: () -
             SearchField(q, "Set name or code (e.g. SSP)") { q = it }
         }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.surface).clickable { onAny() }.padding(12.dp)) {
+                    Column { Text("Any set", color = p.fg, style = Type.strong); Sub("Don't know the set? Find the card by its number and total (45/185) or its name.") }
+                }
+                Gap(6.dp)
+                Sub("Each set shows its symbol, so you can match the little icon on the card.")
+            }
             if (q.isBlank() && recent.isNotEmpty()) {
                 item { Label("Recent") }
                 items(recent, key = { "r" + it.key }) { s -> SetPickRow(s) { onPick(s) } }
@@ -200,9 +245,67 @@ private fun SetPickRow(s: CardSet, onClick: () -> Unit) {
     val p = P
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(34.dp), contentAlignment = Alignment.Center) {
+            if (s.symbol.isNotEmpty()) coil.compose.AsyncImage(s.symbol, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier.width(26.dp).heightIn(max = 26.dp))
+        }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(s.name, color = p.fg, style = Type.strong, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Sub(listOf(s.series, s.abbr).filter { it.isNotEmpty() }.joinToString(" · "), maxLines = 1)
         }
+    }
+}
+
+/**
+ * Finds a card without knowing its set. "45/185" matches card 45 in sets with 185 cards (the printed total),
+ * "TG05/TG30" works for trainer galleries, and any words narrow it by name ("umbreon 95").
+ */
+fun findAnySet(lang: String, query: String): List<Card> {
+    val words = query.lowercase().trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    val numRe = Regex("^#?([a-z]{0,4})0*(\\d+)(?:/([a-z]{0,4})0*(\\d+))?$")
+    var num: MatchResult? = null
+    val names = ArrayList<String>()
+    for (w in words) { val m = numRe.matchEntire(w); if (m != null && num == null) num = m else names.add(w) }
+    val out = ArrayList<Card>()
+    for (s in AppState.catalog.sets) {
+        if (s.custom || s.lang != lang) continue
+        val m = num
+        val total = m?.groupValues?.get(4)?.takeIf { it.isNotEmpty() }?.toInt()
+        val totalPrefix = m?.groupValues?.get(3) ?: ""
+        if (total != null && totalPrefix.isEmpty() && s.total != total && s.cards.size != total) continue
+        for (c in s.cards) {
+            if (m != null) {
+                val lm = Regex("^([a-z]*)0*(\\d+)").find(c.localId.lowercase()) ?: continue
+                if (lm.groupValues[1] != m.groupValues[1] || lm.groupValues[2] != m.groupValues[2]) continue
+            }
+            if (names.any { !c.search.contains(it) }) continue
+            out.add(c)
+        }
+    }
+    return out.sortedByDescending { it.set.date }
+}
+
+@Composable
+private fun ShopMatchRow(c: Card, onClick: () -> Unit) {
+    val p = P
+    val have = AppState.store.total(c.key)
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        CardArt(c, Modifier.width(54.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("${c.localId} ${c.name}", style = Type.strong, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (c.set.symbol.isNotEmpty()) {
+                    coil.compose.AsyncImage(c.set.symbol, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.width(16.dp).heightIn(max = 16.dp))
+                    Spacer(Modifier.width(6.dp))
+                }
+                Sub(c.set.name + " · " + c.set.date.take(4), maxLines = 1)
+            }
+            Text(if (have == 0) "NEED IT" else "Have ×$have", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (have == 0) p.up else p.muted)
+        }
+        PriceText(AppState.displayPrice(c))
     }
 }
