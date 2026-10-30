@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        if (AppState.ready) runCatching { AppState.store.flush() }
         val ctx = applicationContext
         if (AppState.ready && DriveSync.fileUri(ctx) != null && AppState.isOnline(ctx))
             kotlinx.coroutines.GlobalScope.launch { DriveSync.sync(ctx) }

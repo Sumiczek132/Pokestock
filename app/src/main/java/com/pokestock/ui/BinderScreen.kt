@@ -88,7 +88,7 @@ fun SetBinderScreen(setKey: String) {
     }
 }
 
-/** The Pokédex binder as pages of 9, slot #1 first. */
+/** The Pokédex binder as 16-pocket pages, slot #1 first. */
 @Composable
 fun DexBinderScreen() {
     val p = P

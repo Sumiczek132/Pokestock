@@ -68,33 +68,33 @@ class ValueWidget : AppWidgetProvider() {
 }
 
 object WidgetData {
-    /** Saves today's value (and keeps yesterday's for the change), then redraws any widgets. */
+    /** Saves the current value, then redraws any widgets. */
     fun publish(ctx: Context) {
         if (!AppState.ready || AppState.catalog.sets.isEmpty()) return
         val prefs = ctx.getSharedPreferences("widget", Context.MODE_PRIVATE)
-        val today = LocalDate.now().toString()
         val value = AppState.portfolioValue()
         val e = prefs.edit()
-        if (prefs.getString("date", "") != today) {
-            e.putLong("prev", prefs.getLong("value", value)).putString("date", today)
-        }
         e.putLong("value", value).putString("prices", AppState.prices.date).apply()
         val mgr = AppWidgetManager.getInstance(ctx)
         render(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, ValueWidget::class.java)))
+    }
+
+    /** How much the latest price update moved your collection's value (same cards, old vs new prices). */
+    fun priceMove(ctx: Context, pence: Long) {
+        ctx.getSharedPreferences("widget", Context.MODE_PRIVATE).edit().putLong("move", pence).apply()
     }
 
     fun render(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
         if (ids.isEmpty()) return
         val prefs = ctx.getSharedPreferences("widget", Context.MODE_PRIVATE)
         val value = prefs.getLong("value", -1)
-        val prev = prefs.getLong("prev", value)
-        val diff = value - prev
+        val diff = prefs.getLong("move", 0)
         val pd = prefs.getString("prices", "") ?: ""
         val pi = PendingIntent.getActivity(ctx, 2, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         for (id in ids) {
             val rv = RemoteViews(ctx.packageName, R.layout.widget_value)
             rv.setTextViewText(R.id.w_value, if (value < 0) "Open Pokestock" else poundsRound(value))
-            rv.setTextViewText(R.id.w_change, if (value < 0) "" else (if (diff >= 0) "▲ " else "▼ ") + pounds(Math.abs(diff)) + " today")
+            rv.setTextViewText(R.id.w_change, if (value < 0) "" else (if (diff >= 0) "▲ " else "▼ ") + pounds(Math.abs(diff)) + " price change")
             rv.setTextColor(R.id.w_change, if (diff >= 0) 0xFF45CF86.toInt() else 0xFFFF7466.toInt())
             rv.setTextViewText(R.id.w_date, pd.takeIf { it.isNotEmpty() }?.let { "Prices " + LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM")) } ?: "")
             rv.setOnClickPendingIntent(R.id.w_root, pi)

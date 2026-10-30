@@ -124,7 +124,7 @@ fun ShopScreen() {
             }
             if (set == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.weight(1f)) { Segmented(listOf("EN" to "English", "JA" to "Japanese"), lang) { lang = it; matches = null } }
-                Btn("Scan") { Nav.page = "scan" }
+                Btn("Scan") { Nav.openPage("scan", from = "shop") }
             }
             val c = card
             val m = matches

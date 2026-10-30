@@ -106,7 +106,7 @@ fun SyncScreen() {
         }
     }
 
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
+    Column(Modifier.verticalScroll(Nav.syncScroll).padding(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
         Text("Sync & prices", style = Type.display, color = p.fg)
 
         if (AppUpdate.available != null) {

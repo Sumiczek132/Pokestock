@@ -38,7 +38,7 @@ fun WantedScreen() {
     }
     val (empty, ups, wish) = data
     fun cost(list: List<Int>) = list.sumOf { n -> slotWantsOpen(n).mapNotNull { AppState.lowPrice(it) }.minOrNull()?.toLong() ?: 0L }
-    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+    LazyColumn(state = Nav.wantedList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Row(verticalAlignment = Alignment.CenterVertically) {

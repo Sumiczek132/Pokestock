@@ -63,7 +63,7 @@ fun PortfolioScreen() {
     val start = cut.firstOrNull()?.second ?: 0.0
     val diff = data.total / 100.0 - start
 
-    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+    LazyColumn(state = Nav.portfolioList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item {
             if (com.pokestock.data.AppUpdate.available != null) {
                 Panel(Modifier.padding(bottom = 12.dp).clickable { Nav.tab = "more" }) {

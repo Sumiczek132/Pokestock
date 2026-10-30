@@ -176,19 +176,21 @@ fun CardSheet(key: String) {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Btn(if (online) "eBay sold" else "eBay needs signal", Modifier.weight(1f), enabled = online) {
-                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ebayUrl(card, k, null))))
-            }
-            val wish = AppState.store.isWish(card.key)
-            Btn(if (wish) "Wanted ✓" else "Add to wanted", Modifier.weight(1f), primary = !wish) {
-                val on = AppState.store.toggleWish(card.key); say(if (on) "Added to wanted" else "Removed from wanted")
-            }
+        val wish = AppState.store.isWish(card.key)
+        Btn(if (wish) "On your Wanted list ✓" else "Add to wanted", Modifier.fillMaxWidth(), primary = !wish) {
+            val on = AppState.store.toggleWish(card.key); say(if (on) "Added to wanted" else "Removed from wanted")
         }
-        Btn(if (online) "Cardmarket" else "Cardmarket needs signal", Modifier.fillMaxWidth(), enabled = online) {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cardmarketUrl(card, k))))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Btn(if (online) "eBay sold" else "eBay (no signal)", Modifier.weight(1f), enabled = online) {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ebayUrl(card, k, null))))
+                }
+                Btn(if (online) "Cardmarket" else "Cardmarket (no signal)", Modifier.weight(1f), enabled = online) {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cardmarketUrl(card, k))))
+                }
+            }
+            Sub("eBay: UK sold listings for this exact version, ungraded. Cardmarket: this card's own page.")
         }
-        Sub("eBay opens UK sold listings for this exact version, ungraded only. Cardmarket opens this card's page there.")
 
         if (card.dex > 0) {
             val inBinder = AppState.store.binderCard(card.dex) == card.key
@@ -204,9 +206,19 @@ fun CardSheet(key: String) {
             }
         }
 
-        // Price alert
-        run {
-            val alert = AppState.store.alert(card.key, k)
+        // Price alert and your own price, tucked under one row.
+        val alertNow = AppState.store.alert(card.key, k)
+        var priceSettings by remember(key) { mutableStateOf(false) }
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.surface).border(1.dp, p.line, RoundedCornerShape(12.dp))
+            .clickable { priceSettings = !priceSettings }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Price alert & your price", fontWeight = FontWeight.SemiBold, color = p.fg)
+                Sub(listOfNotNull(alertNow?.let { "🔔 alert at ${pounds(it)}" }, own?.let { "your price ${pounds(it)}" }).joinToString(" · ").ifEmpty { "None set for this version" })
+            }
+            Text(if (priceSettings) "▾" else "▸", color = p.accentInk, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        if (priceSettings) run {
+            val alert = alertNow
             var editAlert by remember(key, k) { mutableStateOf(false) }
             if (!editAlert) Text(if (alert != null) "🔔 Alert when ${Labels.variantLabel(card, k)} is ${pounds(alert)} or less · Change" else "Set a price alert for this version",
                 color = p.want, fontSize = 14.sp, modifier = Modifier.clickable { editAlert = true }.padding(vertical = 4.dp))
@@ -228,7 +240,8 @@ fun CardSheet(key: String) {
         }
 
         // Own price
-        if (!editPrice) Text(if (own != null) "Your price is set · Change or remove" else "Set your own price for this version",
+        if (!priceSettings) Unit
+        else if (!editPrice) Text(if (own != null) "Your price is set · Change or remove" else "Set your own price for this version",
             color = p.want, fontSize = 14.sp, modifier = Modifier.clickable { editPrice = true }.padding(vertical = 4.dp))
         else {
             var txt by remember(key, k) { mutableStateOf(own?.let { String.format("%.2f", it / 100.0) } ?: "") }

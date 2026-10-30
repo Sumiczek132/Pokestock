@@ -55,7 +55,7 @@ fun DexScreen() {
     val cat = AppState.catalog
     val filled = remember(v, cat) { (1..Species.count).count { AppState.store.binderCard(it)?.let { k -> cat.byKey[k] } != null } }
     val ups = remember(v, cat) { (1..Species.count).count { AppState.store.binderCard(it) != null && slotWantsOpen(it).isNotEmpty() } }
-    val worth = remember(v, cat, AppState.prices) { (1..Species.count).sumOf { n -> AppState.store.binderCard(n)?.let { cat.byKey[it] }?.let { AppState.lowPrice(it)?.toLong() } ?: 0L } }
+    val worth = remember(v, cat, AppState.prices) { (1..Species.count).sumOf { n -> AppState.store.binderCard(n)?.let { cat.byKey[it] }?.let { AppState.displayPrice(it)?.toLong() } ?: 0L } }
     val slots = remember(v, cat, Nav.dexFilter, Nav.dexGen, Nav.dexQuery) {
         val (a, b) = if (Nav.dexGen > 0) GENS[Nav.dexGen - 1] else 1 to Species.count
         val q = Nav.dexQuery.trim().lowercase().removePrefix("#")
@@ -108,7 +108,7 @@ private fun SlotTile(n: Int) {
             Text(Species.name(n), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             when {
                 card != null && wants > 0 -> Text("↑ Upgrade", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = p.up)
-                card != null -> Text(pounds(AppState.lowPrice(card)).takeIf { it != "—" } ?: "", fontSize = 11.sp, color = p.muted)
+                card != null -> Text(pounds(AppState.displayPrice(card)).takeIf { it != "—" } ?: "", fontSize = 11.sp, color = p.muted)
                 wants > 0 -> Text("$wants wanted", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = p.want)
                 else -> Text("Missing", fontSize = 11.sp, color = p.muted)
             }
@@ -146,7 +146,7 @@ fun SlotSheet(n: Int) {
                 Label("In your binder")
                 Text(cur.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = p.fg)
                 Sub("${cur.set.name} · ${cur.numberLabel}")
-                Text(pounds(AppState.lowPrice(cur)), style = Type.price, color = p.fg)
+                Text(pounds(AppState.displayPrice(cur)), style = Type.price, color = p.fg)
                 Btn("Open card", Modifier.fillMaxWidth()) { Nav.openCard(cur.key) }
             }
         } else Panel { Text("Empty slot. Pick one of your cards below, or tick the cards you'd take so they show up in Wanted.", color = p.muted) }
@@ -195,7 +195,7 @@ private fun OptionRow(c: Card, selected: Boolean, radio: Boolean, onClick: () ->
             Sub("${c.set.name} · ${Labels.rarityShort(c.rarity).ifEmpty { "—" }} · ${c.set.lang}", maxLines = 1)
         }
         Column(horizontalAlignment = Alignment.End) {
-            PriceText(AppState.lowPrice(c))
+            PriceText(if (AppState.store.total(c.key) > 0) AppState.displayPrice(c) else AppState.lowPrice(c))
             Text("Open", color = p.want, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { Nav.openCard(c.key) }.padding(horizontal = 8.dp, vertical = 6.dp))
         }

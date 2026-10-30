@@ -273,18 +273,36 @@ class CollectionStore(private val file: File, val doc: CollectionDoc, private va
         backup.trades.forEach { (k, v) -> if (k !in doc.trades) doc.trades[k] = v }
         for (k in doc.binder.keys + backup.binder.keys) doc.binder[k] = Stamped(backup.binder[k]?.v ?: "", t)
         changed()
+        flush()
     }
 
-    fun mergeIn(other: CollectionDoc): Int { val n = doc.merge(other); if (n > 0) changed(); return n }
+    fun mergeIn(other: CollectionDoc): Int { val n = doc.merge(other); if (n > 0) { changed(); flush() }; return n }
     fun invalidate() { ownIndex = null; slabIndex = null }
 
     fun exportJson(): String = doc.toJson().toString()
 
-    fun save() {
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(doc.toJson().toString())
-        tmp.renameTo(file)
+    // Saving: changes are written a moment after the last tap, off the main thread, so adding cards
+    // quickly doesn't stutter. flush() writes straight away (leaving the app, after a sync or restore).
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val saveSoon = Runnable { val text = doc.toJson().toString(); io.execute { write(text) } }
+
+    private fun write(text: String) {
+        synchronized(this) {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(text)
+            tmp.renameTo(file)
+        }
     }
 
-    private fun changed() { ownIndex = null; slabIndex = null; save(); onChange() }
+    fun save() { main.removeCallbacks(saveSoon); write(doc.toJson().toString()) }
+
+    /** Writes any pending change now. */
+    fun flush() = save()
+
+    private fun changed() {
+        ownIndex = null; slabIndex = null
+        main.removeCallbacks(saveSoon); main.postDelayed(saveSoon, 600)
+        onChange()
+    }
 }

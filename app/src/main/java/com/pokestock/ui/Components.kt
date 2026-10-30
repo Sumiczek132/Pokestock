@@ -86,6 +86,15 @@ private fun ArtPlaceholder(card: Card, big: Boolean) {
     val brush = if (special) Brush.linearGradient(listOf(Color.hsl(h, .6f, .55f), Color.hsl((h + 70) % 360, .6f, .6f), Color.hsl((h + 150) % 360, .55f, .55f)))
     else Brush.linearGradient(listOf(Color.hsl(h, .45f, .46f), Color.hsl((h + 30) % 360, .4f, .28f)))
     Box(Modifier.fillMaxSize().background(brush)) {
+        // No picture: show the set symbol and number too, so cards without images can still be told apart.
+        Row(Modifier.fillMaxWidth().padding(if (big) 8.dp else 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (card.set.symbol.isNotEmpty()) coil.compose.AsyncImage(card.set.symbol, contentDescription = null, contentScale = ContentScale.Fit,
+                modifier = Modifier.size(if (big) 22.dp else 9.dp))
+            Spacer(Modifier.weight(1f))
+            Text(card.localId, color = Color.White.copy(alpha = 0.9f), fontSize = if (big) 13.sp else 7.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        if (big) Text(card.set.name, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 10.dp))
         Text(card.name, color = Color.White, fontSize = if (big) 14.sp else 8.sp, fontWeight = FontWeight.Bold, maxLines = 2,
             overflow = TextOverflow.Ellipsis, lineHeight = if (big) 16.sp else 9.sp,
             modifier = Modifier.align(Alignment.BottomStart).padding(if (big) 10.dp else 3.dp))
@@ -312,7 +321,7 @@ fun Segmented(options: List<Pair<String, String>>, selected: String, onSelect: (
             val on = k == selected
             Box(Modifier.weight(1f).heightIn(min = 38.dp).clip(RoundedCornerShape(9.dp)).background(if (on) p.fg else Color.Transparent)
                 .clickable { onSelect(k) }, contentAlignment = Alignment.Center) {
-                Text(label, fontWeight = FontWeight.SemiBold, color = if (on) p.bg else p.muted)
+                Text(label, fontWeight = FontWeight.SemiBold, color = if (on) p.bg else p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

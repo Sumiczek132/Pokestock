@@ -42,9 +42,33 @@ object Duplicates {
      * Copies beyond the one you keep, not already in the trade binder. Commons, uncommons and plain holos
      * under £1 are left out, unless they're a pattern reverse or vintage.
      */
+    /**
+     * Copies you need to keep: one for the Pokédex binder if this card fills its slot, one for a set binder
+     * you're tracking if that binder has a pocket for this version, and always at least one.
+     */
+    fun keep(c: Card, variant: String): Int {
+        var n = 0
+        if (c.dex > 0 && AppState.store.binderCard(c.dex) == c.key) {
+            val owned = AppState.store.ownedVariants(c.key).keys
+            val dexVersion = com.pokestock.data.Binder.mainVariant(c).takeIf { it in owned } ?: owned.maxByOrNull { AppState.unitPrice(c, it) ?: 0 }
+            if (dexVersion == variant) n++
+        }
+        val mode = AppState.store.binderMode(c.set.key)
+        if (mode.isNotEmpty()) {
+            val main = com.pokestock.data.Binder.mainVariant(c)
+            val inSetBinder = when (mode) {
+                "master" -> true
+                "base_rh" -> com.pokestock.data.Binder.isBase(c) && (variant == main || variant == "reverse")
+                else -> com.pokestock.data.Binder.isBase(c) && variant == main
+            }
+            if (inSetBinder) n++
+        }
+        return maxOf(1, n)
+    }
+
     fun find(): List<Spare> = AppState.holdings().mapNotNull { h ->
         val inTrade = AppState.store.tradeQty(h.card.key, h.variant)
-        val spare = h.qty - 1 - inTrade
+        val spare = h.qty - keep(h.card, h.variant) - inTrade
         if (spare <= 0) return@mapNotNull null
         val each = AppState.unitPrice(h.card, h.variant) ?: 0
         val bulk = Labels.group(h.card.rarity) in setOf("cu", "other") && each < 100 && !isPattern(h.variant) && !isVintage(h.card)
@@ -63,7 +87,7 @@ fun DuplicatesScreen() {
         PageHeader("Duplicates") { Nav.page = null }
         LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
             item {
-                Sub("Spare copies (you keep one of each) that aren't in the trade binder yet. Commons, uncommons and holos under £1 are left out, except pattern reverses and vintage.")
+                Sub("Spare copies that aren't in the trade binder yet. You keep one of each, or two when the card is in your Pokédex binder and a set binder you're tracking. Commons, uncommons and holos under £1 are left out, except pattern reverses and vintage.")
                 Gap(10.dp)
                 if (list.isNotEmpty()) Btn("Add all ${list.sumOf { it.spare }} spares to the trade binder (${pounds(total)})", Modifier.fillMaxWidth(), primary = true) {
                     list.forEach { s -> AppState.store.setTradeQty(s.card.key, s.variant, s.inTrade + s.spare) }

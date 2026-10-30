@@ -79,6 +79,13 @@ object Nav {
     var ownedFirst by mutableStateOf(true)
     /** A page can take the back button first (e.g. quick add shows its summary). Return true if handled. */
     var pageBack: (() -> Boolean)? = null
+    /** Page to go back to when the current one closes (e.g. Scan opened from Shop mode). */
+    var returnTo: String? = null
+    fun openPage(pg: String, from: String? = null) { returnTo = from; page = pg }
+    fun closePage() { page = returnTo; returnTo = null }
+    val portfolioList = androidx.compose.foundation.lazy.LazyListState()
+    val wantedList = androidx.compose.foundation.lazy.LazyListState()
+    val syncScroll = androidx.compose.foundation.ScrollState(0)
 
     // Scroll positions, kept so going back returns to the same place.
     val setList = androidx.compose.foundation.lazy.LazyListState()
@@ -114,7 +121,10 @@ fun PokestockRoot(startOnSync: Boolean) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             TopBar()
             Box(Modifier.weight(1f)) {
-                when (Nav.tab) {
+                // While a full page or card is open on top, the tab underneath isn't drawn, so it doesn't
+                // redo its sums on every change. Scroll positions are kept in Nav, so it comes back where it was.
+                val covered = Nav.page != null || Nav.card != null || Nav.slot != null || Nav.addCustom
+                if (!covered) when (Nav.tab) {
                     "portfolio" -> PortfolioScreen()
                     "collection" -> CollectionScreen()
                     "dex" -> DexScreen()
@@ -142,7 +152,7 @@ fun PokestockRoot(startOnSync: Boolean) {
             Nav.slot?.let { SlotSheet(it) }
         }
         AnimatedVisibility(Nav.card != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            Nav.card?.let { CardSheet(it) }
+            Nav.card?.let { k -> androidx.compose.runtime.key(k) { CardSheet(k) } }
         }
         AnimatedVisibility(Nav.addCustom, enter = slideInVertically { it }, exit = slideOutVertically { it }) { AddCustomSheet() }
         if (Nav.fullImage != null) FullImage(Nav.fullImage!!)
@@ -155,7 +165,7 @@ fun PokestockRoot(startOnSync: Boolean) {
         BackHandler(Nav.card == null && Nav.slot == null && Nav.page != null) {
             if (Nav.pageBack?.invoke() == true) Unit
             else if (Nav.page == "trade" && TradeState.picking) TradeState.picking = false
-            else if (Nav.page == "trade" && TradeState.selecting) TradeState.reset() else Nav.page = null
+            else if (Nav.page == "trade" && TradeState.selecting) TradeState.reset() else Nav.closePage()
         }
         BackHandler(Nav.card == null && Nav.slot == null && Nav.tab == "collection" && Nav.openSet != null) { Nav.openSet = null }
     }

@@ -82,6 +82,7 @@ object AppState {
                 val manifest = JSONObject(String(download(Data.BASE + "manifest.json")))
                 val prefs = ctx.getSharedPreferences("data", Context.MODE_PRIVATE)
                 var changed = false
+                var pricesChanged = false
                 val built = manifest.optString("catalogBuilt")
                 if (force || built != prefs.getString("catalogBuilt", "") || !File(dir, "catalog.json.gz").exists()) {
                     status = "Downloading card list…"
@@ -92,7 +93,7 @@ object AppState {
                 if (force || pd != prefs.getString("pricesDate", "") || !File(dir, "prices.json.gz").exists()) {
                     status = "Downloading prices…"
                     save("prices.json.gz", download(Data.BASE + "prices.json.gz"))
-                    prefs.edit().putString("pricesDate", pd).apply(); changed = true
+                    prefs.edit().putString("pricesDate", pd).apply(); changed = true; pricesChanged = true
                     val lastHist = prefs.getLong("historyAt", 0)
                     val week = 7L * 24 * 3600 * 1000
                     if (force || !isMetered(ctx) || System.currentTimeMillis() - lastHist > week || !File(dir, "history.json.gz").exists()) {
@@ -101,7 +102,10 @@ object AppState {
                         prefs.edit().putLong("historyAt", System.currentTimeMillis()).apply()
                     }
                 }
+                // Price movement on what you own, at the same cards, for the widget (new cards aren't counted as a rise).
+                val before = if (pricesChanged && prices.date.isNotEmpty()) portfolioValue() else null
                 if (changed) { loadError = ""; loadLocal() }
+                if (before != null) runCatching { WidgetData.priceMove(ctx, portfolioValue() - before) }
                 runCatching { Alerts.check(ctx) }
                 runCatching { WidgetData.publish(ctx) }
                 if (catalog.sets.none { !it.custom }) throw RuntimeException(loadError.ifEmpty { "the card list didn't load" })

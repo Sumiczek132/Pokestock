@@ -1,6 +1,8 @@
 package com.pokestock.ui
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.GridView
@@ -70,6 +72,17 @@ fun statsOf(s: CardSet): SetStats {
     return SetStats(have, s.cards.size, vh, vt, value)
 }
 
+/** Set progress for the whole set list, kept between visits so coming back to the tab is instant. */
+private object StatsCache {
+    private var key: Triple<Int, Any, String>? = null
+    private var value: Map<String, SetStats> = emptyMap()
+    fun get(v: Int, prices: Any, lang: String, make: () -> Map<String, SetStats>): Map<String, SetStats> {
+        val k = Triple(v, prices, lang)
+        if (k != key) { value = make(); key = k }
+        return value
+    }
+}
+
 @Composable
 fun SearchField(value: String, placeholder: String, onChange: (String) -> Unit) {
     val p = P
@@ -104,7 +117,7 @@ private fun SetList() {
     val lang = Nav.lang
     val q = Nav.colQuery.trim()
     val sets = remember(cat, lang) { cat.sets.filter { it.lang == lang } }
-    val stats = remember(v, prices, sets) { sets.associate { it.key to statsOf(it) } }
+    val stats = remember(v, prices, sets) { StatsCache.get(v, prices, lang) { sets.associate { it.key to statsOf(it) } } }
     val hits = remember(cat, lang, q) { if (q.length >= 2) cat.search(lang, q) else emptyList() }
     val shown = remember(hits, v, Nav.searchOwned, Nav.ownedFirst) {
         hits.filter { c -> val o = AppState.store.total(c.key) > 0; when (Nav.searchOwned) { "owned" -> o; "missing" -> !o; else -> true } }
@@ -130,12 +143,11 @@ private fun SetList() {
             Gap(10.dp)
             Segmented(listOf("EN" to "English", "JA" to "Japanese", "ZH" to "Chinese"), lang) { Nav.lang = it }
             Gap(10.dp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { SearchField(Nav.colQuery, "Search every ${if (lang == "EN") "English" else if (lang == "JA") "Japanese" else "Chinese"} card or set") { Nav.colQuery = it } }
-                Spacer(Modifier.width(8.dp))
-                Btn("Scan") { Nav.page = "scan" }
-                Spacer(Modifier.width(6.dp))
-                Btn("Shop") { Nav.page = "shop" }
+            SearchField(Nav.colQuery, "Search every ${if (lang == "EN") "English" else if (lang == "JA") "Japanese" else "Chinese"} card or set") { Nav.colQuery = it }
+            Gap(8.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(Icons.Outlined.PhotoCamera, "Scan a card", Modifier.weight(1f)) { Nav.page = "scan" }
+                ActionButton(Icons.Outlined.Storefront, "Shop mode", Modifier.weight(1f)) { Nav.page = "shop" }
             }
             if (cat.sets.isEmpty()) { Gap(); Panel { Text("The card list downloads the first time you're online. Open the Sync tab and tap Update.", color = p.muted) } }
         }
@@ -286,13 +298,14 @@ private fun SetView(s: CardSet) {
                 listOf("all" to "Any rarity", "cu" to "C / U", "other" to "Rare & holo", "ultra" to "Ultra", "art" to "IR / AR", "special" to "SIR / SAR")
                     .forEach { (k, l) -> Chip(l, Nav.setGroup == k) { Nav.setGroup = k } }
             }
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Switch(Nav.master, { Nav.master = it }, colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.onAccent))
                 Spacer(Modifier.width(8.dp))
-                Text("Count every version", color = p.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Chip(if (Nav.setSort == "num") "Sort: number" else "Sort: price", false) { Nav.setSort = if (Nav.setSort == "num") "price" else "num" }
-                Spacer(Modifier.width(6.dp))
-                Chip(if (Nav.setGrid) "Pictures" else "List", Nav.setGrid) { Nav.setGrid = !Nav.setGrid }
+                Text("Count every version (master set)", color = p.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.weight(1f)) { Segmented(listOf("num" to "By number", "price" to "By price"), Nav.setSort) { Nav.setSort = it } }
+                Box(Modifier.weight(1f)) { Segmented(listOf("list" to "List", "grid" to "Pictures"), if (Nav.setGrid) "grid" else "list") { Nav.setGrid = it == "grid" } }
             }
             Sub("${list.size} shown")
             Gap(4.dp)

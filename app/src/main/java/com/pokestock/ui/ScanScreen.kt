@@ -110,7 +110,7 @@ fun ScanScreen() {
         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
     }
     if (summary) {
-        SessionSummary(session, "Scan session", onMore = { summary = false; auto.reset() }, onDone = { Nav.page = null })
+        SessionSummary(session, "Scan session", onMore = { summary = false; auto.reset() }, onDone = { Nav.closePage() })
         return
     }
 
@@ -155,7 +155,7 @@ fun ScanScreen() {
             Btn("Allow camera", primary = true) { ask.launch(Manifest.permission.CAMERA) }
         }
         Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-            PageHeaderOnDark(if (bulk) "Bulk scan" else "Scan a card") { if (session.total > 0) summary = true else Nav.page = null }
+            PageHeaderOnDark(if (bulk) "Bulk scan" else "Scan a card") { if (session.total > 0) summary = true else Nav.closePage() }
             androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp)).background(p.bg.copy(alpha = 0.85f)).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Chip("Look up", !bulk) { bulk = false }

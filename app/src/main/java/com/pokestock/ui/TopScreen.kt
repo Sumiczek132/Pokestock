@@ -85,7 +85,7 @@ fun TopScreen() {
                 Gap(8.dp)
                 if (list.isEmpty()) EmptyState(if (sort == "up") "Nothing in your top 100 has gone up over this period." else if (sort == "down") "Nothing in your top 100 has gone down over this period." else "No priced cards yet.")
             }
-            itemsIndexed(list, key = { _, it -> it.card.key + it.variant + it.label }) { i, it -> TopRow(i + 1, it) }
+            itemsIndexed(list, key = { i, it -> "$i|" + it.card.key + it.variant + it.label }) { i, it -> TopRow(i + 1, it) }
         }
     }
 }
