@@ -59,7 +59,9 @@ if (cmProductsFile && fs.existsSync(cmProductsFile)) {
 }
 /** Name reduced to letters and digits, so "Giovanni’s Exile" matches "Giovanni's Exile" and "Articuno GX" matches "Articuno-GX". */
 function compact(n: string) {
-  return baseName(n).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9δ]/g, '')
+  // Cardmarket adds the level on old cards ("Dialga Lv.68") and "Delta Species" on δ cards; the card list doesn't.
+  return baseName(n).replace(/\blv\.?\s*\d+\b/g, '').replace(/\bdelta species\b/g, '')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9δ]/g, '')
 }
 const cmByExpCompact = new Map<string, number[]>()        // "expansion|compact name" -> products
 for (const [id, exp] of cmExp) {
@@ -247,10 +249,22 @@ function fillMissing() {
   const isPlain = (k: string) => !k.includes('+') && !k.includes('~')
   const missing = (c: any) => c[6].some((v: any) => isPlain(v[0])) && c[6].every((v: any) => !isPlain(v[0]) || !v[1])
 
-  // Work out an expansion for sets that have none.
+  // Work out an expansion for sets that have none, and replace one that hardly matches (the trainer kits
+  // point at the wrong Cardmarket expansion) when another has nearly every card's name.
   const subset = new Set<number>()
+  const coverage = (e: number, list: any[]) => list.filter(c => cmByExpCompact.has(e + '|' + compact(c[2]))).length
   for (const [si, list] of bySet) {
     const s = sets[si]
+    if (s.cm && list.length >= 5 && coverage(s.cm, list) < list.length * 0.5) {
+      const tally = new Map<number, number>()
+      for (const c of list) for (const [e] of cmByExpCompactFor(compact(c[2]))) tally.set(e, (tally.get(e) || 0) + 1)
+      const best = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]
+      if (best && best[0] !== s.cm && best[1] >= list.length * 0.9) {
+        inferred.push(`${s.name}: expansion ${s.cm} -> ${best[0]} (${best[1]}/${list.length} names)`)
+        for (const c of list) for (const v of c[6]) if (v[1] && cmExp.get(v[1]) === s.cm) { used.delete(v[1]); v[1] = 0 }
+        s.cm = best[0]
+      }
+    }
     if (s.cm) continue
     // 1) the expansion most of its already-linked cards point to
     const linked = new Map<number, number>(); let nLinked = 0
@@ -300,6 +314,9 @@ function fillMissing() {
       list.sort((a, b) => localSort(a[1], b[1]))
       if (cands.length > list.length) { extra.push([name, list]); continue }
       list.forEach((c, i) => { if (cands[i]) assign(c, cands[i]) })
+      // Kits repeat the same basic Energy many times; Cardmarket has it once, so they share it.
+      if (/energy$/.test(name) && cands.length && cands.length < list.length)
+        list.slice(cands.length).forEach(c => { for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = cands[0]; cmFilled++ })
     }
     // More products than cards (a stamped or promo version shares the name): take the one whose id sits
     // among the neighbouring cards' ids, since Cardmarket lists a set's cards together.
