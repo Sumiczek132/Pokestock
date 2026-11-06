@@ -292,14 +292,28 @@ function fillMissing() {
     if (!s.cm) continue
     const groups = new Map<string, any[]>()
     for (const c of bySet.get(si)!) if (missing(c)) { const k = compact(c[2]); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(c) }
+    const assign = (c: any, id: number) => { for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = id; used.add(id); cmFilled++ }
+    const extra: [string, any[]][] = []
+    // First the clear cases: as many products as cards, matched in number order.
     for (const [name, list] of groups) {
       const cands = (cmByExpCompact.get(s.cm + '|' + name) || []).filter(id => !used.has(id)).sort((a, b) => a - b)
       list.sort((a, b) => localSort(a[1], b[1]))
-      list.forEach((c, i) => {
-        const id = cands[i]; if (!id) return
-        for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = id
-        used.add(id); cmFilled++
-      })
+      if (cands.length > list.length) { extra.push([name, list]); continue }
+      list.forEach((c, i) => { if (cands[i]) assign(c, cands[i]) })
+    }
+    // More products than cards (a stamped or promo version shares the name): take the one whose id sits
+    // among the neighbouring cards' ids, since Cardmarket lists a set's cards together.
+    if (extra.length) {
+      const all = bySet.get(si)!.slice().sort((a, b) => localSort(a[1], b[1]))
+      const plainCm = (c: any) => { const v = c?.[6]?.find((x: any) => isPlain(x[0]) && x[1]); return v ? v[1] as number : 0 }
+      for (const [name, list] of extra) for (const c of list) {
+        const cands = (cmByExpCompact.get(s.cm + '|' + name) || []).filter(id => !used.has(id))
+        if (!cands.length) continue
+        const i = all.indexOf(c); const near: number[] = []
+        for (const j of [i - 3, i - 2, i - 1, i + 1, i + 2, i + 3]) { const n = plainCm(all[j]); if (n) near.push(n) }
+        const d = (id: number) => near.length ? Math.min(...near.map(n => Math.abs(n - id))) : id
+        assign(c, cands.reduce((a, b) => d(a) <= d(b) ? a : b))
+      }
     }
   }
 }
