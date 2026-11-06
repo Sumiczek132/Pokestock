@@ -57,6 +57,16 @@ if (cmProductsFile && fs.existsSync(cmProductsFile)) {
     }
   } catch (e) { console.error('Cardmarket product list unreadable', String(e).slice(0, 100)) }
 }
+/** Name reduced to letters and digits, so "Giovanni’s Exile" matches "Giovanni's Exile" and "Articuno GX" matches "Articuno-GX". */
+function compact(n: string) {
+  return baseName(n).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9δ]/g, '')
+}
+const cmByExpCompact = new Map<string, number[]>()        // "expansion|compact name" -> products
+for (const [id, exp] of cmExp) {
+  const k = exp + '|' + compact(cmNames.get(id) || '')
+  if (!cmByExpCompact.has(k)) cmByExpCompact.set(k, [])
+  cmByExpCompact.get(k)!.push(id)
+}
 function baseName(n: string) { return n.replace(/\s*\[[^\]]*\]/g, '').replace(/\s*\([^)]*\)/g, '').trim().toLowerCase() }
 /** The card number Cardmarket puts in a product name, e.g. "Quaxly (SSP 050)" -> 50. */
 function cmNumber(n: string): number | null { const m = n.match(/\(([A-Z0-9-]+\s+)?([A-Z]*)0*(\d+)\)\s*$/); return m ? Number(m[3]) : null }
@@ -216,8 +226,76 @@ async function walk(root: string, lang: Lang) {
 
 await walk(path.join(dbDir, 'data'), 'EN')
 await walk(path.join(dbDir, 'data-asia'), 'JA')
+
+/**
+ * The card database leaves Cardmarket links out for whole sets (Scarlet & Violet base, Sword & Shield base...)
+ * and odd cards (Giovanni's Exile in Hidden Fates), so those cards had no price. Fill them from Cardmarket's own
+ * product list: same expansion, same name, and where a name appears more than once, in card-number order
+ * (Cardmarket lists a set's cards in that order). Sets with no expansion link get one from their parent set
+ * (Trainer Gallery, Shiny Vault...) or from the expansion most of their card names are in.
+ */
+let cmFilled = 0
+const inferred: string[] = []
+function fillMissing() {
+  if (!cmExp.size) return
+  const bySet = new Map<number, any[]>()
+  cards.forEach(c => { if (sets[c[0]].lang === 'EN') { if (!bySet.has(c[0])) bySet.set(c[0], []); bySet.get(c[0])!.push(c) } })
+  const used = new Set<number>()
+  for (const c of cards) for (const v of c[6]) if (v[1]) used.add(v[1])
+  const claimed = new Set<number>(sets.filter(s => s.lang === 'EN' && s.cm).map(s => s.cm))
+  const byName = new Map<string, any>(sets.filter(s => s.lang === 'EN').map(s => [s.name.toLowerCase(), s]))
+  const isPlain = (k: string) => !k.includes('+') && !k.includes('~')
+  const missing = (c: any) => c[6].some((v: any) => isPlain(v[0])) && c[6].every((v: any) => !isPlain(v[0]) || !v[1])
+
+  // Work out an expansion for sets that have none.
+  const subset = new Set<number>()
+  for (const [si, list] of bySet) {
+    const s = sets[si]
+    if (s.cm) continue
+    const parentName = s.name.replace(/\s+(Trainer Gallery|Shiny Vault|Galarian Gallery)$/i, '').toLowerCase()
+    const parent = parentName !== s.name.toLowerCase() ? byName.get(parentName) : undefined
+    if (parent?.cm) { s.cm = parent.cm; subset.add(si); inferred.push(`${s.name} -> ${parent.name}`); continue }
+    const tally = new Map<number, number>()
+    for (const c of list) {
+      const exps = new Set<number>()
+      for (const [k] of cmByExpCompactFor(compact(c[2]))) exps.add(k)
+      exps.forEach(e => tally.set(e, (tally.get(e) || 0) + 1))
+    }
+    const best = [...tally.entries()].filter(([e]) => !claimed.has(e)).sort((a, b) => b[1] - a[1])[0]
+    if (best && best[1] >= Math.max(5, list.length * 0.6)) { s.cm = best[0]; claimed.add(best[0]); inferred.push(`${s.name} -> expansion ${best[0]} (${best[1]}/${list.length})`) }
+  }
+
+  // Main sets first, so subsets sharing their expansion get what's left over.
+  const order = [...bySet.keys()].sort((a, b) => Number(subset.has(a)) - Number(subset.has(b)))
+  for (const si of order) {
+    const s = sets[si]
+    if (!s.cm) continue
+    const groups = new Map<string, any[]>()
+    for (const c of bySet.get(si)!) if (missing(c)) { const k = compact(c[2]); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(c) }
+    for (const [name, list] of groups) {
+      const cands = (cmByExpCompact.get(s.cm + '|' + name) || []).filter(id => !used.has(id)).sort((a, b) => a - b)
+      list.sort((a, b) => localSort(a[1], b[1]))
+      list.forEach((c, i) => {
+        const id = cands[i]; if (!id) return
+        for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = id
+        used.add(id); cmFilled++
+      })
+    }
+  }
+}
+const expsByCompact = new Map<string, Set<number>>()
+for (const k of cmByExpCompact.keys()) {
+  const i = k.indexOf('|'); const e = Number(k.slice(0, i)), n = k.slice(i + 1)
+  if (!expsByCompact.has(n)) expsByCompact.set(n, new Set())
+  expsByCompact.get(n)!.add(e)
+}
+function cmByExpCompactFor(n: string): [number][] { return [...(expsByCompact.get(n) || [])].map(e => [e]) }
+fillMissing()
+console.log(`Cardmarket links filled in: ${cmFilled}; sets given an expansion: ${inferred.length}`)
+console.log(inferred.join('\n'))
+
 console.log(`Cardmarket links checked: ${cmChecked}, corrected: ${cmFixed}`)
-const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmProducts: cmNames.size }, sets, cards }
+const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmFilled, inferred: inferred.length, cmProducts: cmNames.size }, sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
 const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])
