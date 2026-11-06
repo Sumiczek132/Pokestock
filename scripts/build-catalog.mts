@@ -334,7 +334,12 @@ function fixSubsetSwaps() {
         const ia = plainCm(a), ib = plainCm(b); if (!ia || !ib || ia === ib) continue
         const nA = near(A, a), nB = near(B, b)
         const now = dist(ia, nA) + dist(ib, nB), swapped = dist(ib, nA) + dist(ia, nB)
-        if (swapped < now && dist(ib, nA) <= 30 && dist(ia, nB) <= 30) {
+        // Swap when both fit the other set's run better, or when one card's product is miles from its own
+        // set's run and its namesake's product sits right in it.
+        const better = swapped < now && dist(ib, nA) <= 30 && dist(ia, nB) <= 30
+        const outlierA = dist(ia, nA) > 1000 && dist(ib, nA) <= 100
+        const outlierB = dist(ib, nB) > 1000 && dist(ia, nB) <= 100
+        if (better || outlierA || outlierB) {
           for (const v of a[6]) if (isPlain(v[0]) && v[1] === ia) v[1] = ib
           for (const v of b[6]) if (isPlain(v[0]) && v[1] === ib) v[1] = ia
           cmSwapped++
