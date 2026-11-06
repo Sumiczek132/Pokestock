@@ -60,7 +60,7 @@ if (cmProductsFile && fs.existsSync(cmProductsFile)) {
 /** Name reduced to letters and digits, so "Giovanni’s Exile" matches "Giovanni's Exile" and "Articuno GX" matches "Articuno-GX". */
 function compact(n: string) {
   // Cardmarket adds the level on old cards ("Dialga Lv.68") and "Delta Species" on δ cards; the card list doesn't.
-  return baseName(n).replace(/\blv\.?\s*\d+\b/g, '').replace(/\bdelta species\b/g, '')
+  return baseName(n.replace(/^Unown \[([A-Z!?])\]/i, 'Unown $1')).replace(/\blv\.?\s*\d+\b/g, '').replace(/\bdelta species\b/g, '')
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9δ]/g, '')
 }
 const cmByExpCompact = new Map<string, number[]>()        // "expansion|compact name" -> products
@@ -247,7 +247,11 @@ function fillMissing() {
   const claimed = new Set<number>(sets.filter(s => s.lang === 'EN' && s.cm).map(s => s.cm))
   const byName = new Map<string, any>(sets.filter(s => s.lang === 'EN').map(s => [s.name.toLowerCase(), s]))
   const isPlain = (k: string) => !k.includes('+') && !k.includes('~')
-  const missing = (c: any) => c[6].some((v: any) => isPlain(v[0])) && c[6].every((v: any) => !isPlain(v[0]) || !v[1])
+  // Promos often only come in stamped versions ("normal+winner"); those count when the card has no plain one.
+  const fillable = (c: any, k: string) => isPlain(k) || (!c[6].some((v: any) => isPlain(v[0])) && !k.includes('~'))
+  const missing = (c: any) => c[6].some((v: any) => fillable(c, v[0])) && c[6].every((v: any) => !fillable(c, v[0]) || !v[1])
+  // LV.X cards are named without it in the card list, with it on Cardmarket.
+  const nameKey = (c: any) => compact(c[2]) + (/lv\.?\s*x/i.test(String(c[3])) && !/lvx$/.test(compact(c[2])) ? 'lvx' : '')
 
   // Work out an expansion for sets that have none, and replace one that hardly matches (the trainer kits
   // point at the wrong Cardmarket expansion) when another has nearly every card's name.
@@ -255,11 +259,11 @@ function fillMissing() {
   const coverage = (e: number, list: any[]) => list.filter(c => cmByExpCompact.has(e + '|' + compact(c[2]))).length
   for (const [si, list] of bySet) {
     const s = sets[si]
-    if (s.cm && list.length >= 5 && coverage(s.cm, list) < list.length * 0.5) {
+    if (s.cm && list.length >= 5 && coverage(s.cm, list) < list.length * 0.75) {
       const tally = new Map<number, number>()
       for (const c of list) for (const [e] of cmByExpCompactFor(compact(c[2]))) tally.set(e, (tally.get(e) || 0) + 1)
       const best = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]
-      if (best && best[0] !== s.cm && best[1] >= list.length * 0.9) {
+      if (best && best[0] !== s.cm && best[1] >= list.length * 0.9 && best[1] - coverage(s.cm, list) >= list.length * 0.25) {
         inferred.push(`${s.name}: expansion ${s.cm} -> ${best[0]} (${best[1]}/${list.length} names)`)
         for (const c of list) for (const v of c[6]) if (v[1] && cmExp.get(v[1]) === s.cm) { used.delete(v[1]); v[1] = 0 }
         s.cm = best[0]
@@ -305,8 +309,8 @@ function fillMissing() {
     const s = sets[si]
     if (!s.cm) continue
     const groups = new Map<string, any[]>()
-    for (const c of bySet.get(si)!) if (missing(c)) { const k = compact(c[2]); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(c) }
-    const assign = (c: any, id: number) => { for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = id; used.add(id); cmFilled++ }
+    for (const c of bySet.get(si)!) if (missing(c)) { const k = nameKey(c); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(c) }
+    const assign = (c: any, id: number) => { for (const v of c[6]) if (fillable(c, v[0]) && !v[1]) v[1] = id; used.add(id); cmFilled++ }
     const extra: [string, any[]][] = []
     // First the clear cases: as many products as cards, matched in number order.
     for (const [name, list] of groups) {
@@ -316,7 +320,7 @@ function fillMissing() {
       list.forEach((c, i) => { if (cands[i]) assign(c, cands[i]) })
       // Kits repeat the same basic Energy many times; Cardmarket has it once, so they share it.
       if (/energy$/.test(name) && cands.length && cands.length < list.length)
-        list.slice(cands.length).forEach(c => { for (const v of c[6]) if (isPlain(v[0]) && !v[1]) v[1] = cands[0]; cmFilled++ })
+        list.slice(cands.length).forEach(c => { for (const v of c[6]) if (fillable(c, v[0]) && !v[1]) v[1] = cands[0]; cmFilled++ })
     }
     // More products than cards (a stamped or promo version shares the name): take the one whose id sits
     // among the neighbouring cards' ids, since Cardmarket lists a set's cards together.
