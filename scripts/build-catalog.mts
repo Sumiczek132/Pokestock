@@ -283,6 +283,46 @@ function fillMissing() {
     }
   }
 }
+/**
+ * A main set and its Shiny Vault / Trainer Gallery share one Cardmarket expansion, and the card database
+ * sometimes gives the main card the vault card's product (Hidden Fates 9 Charizard-GX got SV49's £365 price).
+ * Each set's cards sit in their own run of product ids, so when two same-name cards would each sit closer to
+ * the other set's run, swap them.
+ */
+let cmSwapped = 0
+function fixSubsetSwaps() {
+  const isPlain = (k: string) => !k.includes('+') && !k.includes('~')
+  const plainCm = (c: any) => { const v = c?.[6]?.find((x: any) => isPlain(x[0]) && x[1]); return v ? v[1] as number : 0 }
+  const byExp = new Map<number, number[]>()
+  sets.forEach((s, i) => { if (s.lang === 'EN' && s.cm) { if (!byExp.has(s.cm)) byExp.set(s.cm, []); byExp.get(s.cm)!.push(i) } })
+  const bySet = new Map<number, any[]>()
+  for (const c of cards) { if (!bySet.has(c[0])) bySet.set(c[0], []); bySet.get(c[0])!.push(c) }
+  for (const list of bySet.values()) list.sort((a, b) => localSort(a[1], b[1]))
+  const near = (si: number, c: any) => {
+    const l = bySet.get(si)!; const i = l.indexOf(c); const out: number[] = []
+    for (const j of [i - 2, i - 1, i + 1, i + 2]) { const n = plainCm(l[j]); if (n) out.push(n) }
+    return out
+  }
+  const dist = (id: number, ns: number[]) => ns.length ? Math.min(...ns.map(n => Math.abs(n - id))) : 1e9
+  for (const group of byExp.values()) {
+    if (group.length < 2) continue
+    for (let x = 0; x < group.length; x++) for (let y = x + 1; y < group.length; y++) {
+      const A = group[x], B = group[y]
+      const bNames = new Map<string, any[]>()
+      for (const c of bySet.get(B)!) { const k = compact(c[2]); if (!bNames.has(k)) bNames.set(k, []); bNames.get(k)!.push(c) }
+      for (const a of bySet.get(A)!) for (const b of bNames.get(compact(a[2])) || []) {
+        const ia = plainCm(a), ib = plainCm(b); if (!ia || !ib || ia === ib) continue
+        const nA = near(A, a), nB = near(B, b)
+        const now = dist(ia, nA) + dist(ib, nB), swapped = dist(ib, nA) + dist(ia, nB)
+        if (swapped < now && dist(ib, nA) <= 30 && dist(ia, nB) <= 30) {
+          for (const v of a[6]) if (isPlain(v[0]) && v[1] === ia) v[1] = ib
+          for (const v of b[6]) if (isPlain(v[0]) && v[1] === ib) v[1] = ia
+          cmSwapped++
+        }
+      }
+    }
+  }
+}
 const expsByCompact = new Map<string, Set<number>>()
 for (const k of cmByExpCompact.keys()) {
   const i = k.indexOf('|'); const e = Number(k.slice(0, i)), n = k.slice(i + 1)
@@ -291,11 +331,13 @@ for (const k of cmByExpCompact.keys()) {
 }
 function cmByExpCompactFor(n: string): [number][] { return [...(expsByCompact.get(n) || [])].map(e => [e]) }
 fillMissing()
+fixSubsetSwaps()
+console.log(`Main/subset cards swapped to the right product: ${cmSwapped}`)
 console.log(`Cardmarket links filled in: ${cmFilled}; sets given an expansion: ${inferred.length}`)
 console.log(inferred.join('\n'))
 
 console.log(`Cardmarket links checked: ${cmChecked}, corrected: ${cmFixed}`)
-const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmFilled, inferred: inferred.length, cmProducts: cmNames.size }, sets, cards }
+const out = { v: 1, built: new Date().toISOString(), stats: { cmChecked, cmFixed, cmFilled, cmSwapped, inferred: inferred.length, cmProducts: cmNames.size }, sets, cards }
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Japanese cards named from Cardmarket: ${jaNamed}`)
 const sample = cards.filter(c => sets[c[0]].lang === 'JA' && c[7]).slice(0, 8).map(c => c[2] + ' / ' + c[7])
