@@ -252,6 +252,14 @@ function fillMissing() {
   for (const [si, list] of bySet) {
     const s = sets[si]
     if (s.cm) continue
+    // 1) the expansion most of its already-linked cards point to
+    const linked = new Map<number, number>(); let nLinked = 0
+    for (const c of list) for (const v of c[6]) if (isPlain(v[0]) && v[1] && cmExp.has(v[1])) { const e = cmExp.get(v[1])!; linked.set(e, (linked.get(e) || 0) + 1); nLinked++; break }
+    const top = [...linked.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (top && top[1] >= 3 && top[1] >= nLinked * 0.6) {
+      s.cm = top[0]; if (claimed.has(top[0])) subset.add(si); claimed.add(top[0])
+      inferred.push(`${s.name} -> expansion ${top[0]} (from its linked cards)`); continue
+    }
     const parentName = s.name.replace(/\s+(Trainer Gallery|Shiny Vault|Galarian Gallery)$/i, '').toLowerCase()
     const parent = parentName !== s.name.toLowerCase() ? byName.get(parentName) : undefined
     if (parent?.cm) { s.cm = parent.cm; subset.add(si); inferred.push(`${s.name} -> ${parent.name}`); continue }
@@ -264,6 +272,18 @@ function fillMissing() {
     const best = [...tally.entries()].filter(([e]) => !claimed.has(e)).sort((a, b) => b[1] - a[1])[0]
     if (best && best[1] >= Math.max(5, list.length * 0.6)) { s.cm = best[0]; claimed.add(best[0]); inferred.push(`${s.name} -> expansion ${best[0]} (${best[1]}/${list.length})`) }
   }
+
+  // A card linked to a product in a different expansion, while its own set's expansion has a card of that
+  // name, is pointing at the wrong product (Hidden Fates 9 Charizard-GX had the Shiny Vault one): unlink it.
+  for (const [si, list] of bySet) {
+    const s = sets[si]; if (!s.cm) continue
+    for (const c of list) for (const v of c[6]) {
+      if (!isPlain(v[0]) || !v[1]) continue
+      const e = cmExp.get(v[1])
+      if (e !== undefined && e !== s.cm && cmByExpCompact.has(s.cm + '|' + compact(c[2]))) { used.delete(v[1]); v[1] = 0; cmFixed++ }
+    }
+  }
+  for (const c of cards) for (const v of c[6]) if (v[1]) used.add(v[1])
 
   // Main sets first, so subsets sharing their expansion get what's left over.
   const order = [...bySet.keys()].sort((a, b) => Number(subset.has(a)) - Number(subset.has(b)))
