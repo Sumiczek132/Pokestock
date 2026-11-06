@@ -50,6 +50,7 @@ jobs:
           DATE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/prices.json')).date)")
           mkdir -p /tmp/out && cd /tmp/out
           gzip -9 -c /tmp/catalog.json > catalog.json.gz
+          [ -f /tmp/cm-report.json ] && gzip -9 -c /tmp/cm-report.json > cm-report.json.gz || true
           gzip -9 -c /tmp/prices.json > prices.json.gz
           gzip -9 -c /tmp/history.json > history.json.gz
           node -e "

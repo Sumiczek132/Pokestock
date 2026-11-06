@@ -372,6 +372,24 @@ function cmByExpCompactFor(n: string): [number][] { return [...(expsByCompact.ge
 fillMissing()
 fixSubsetSwaps()
 console.log(`Main/subset cards swapped to the right product: ${cmSwapped}`)
+
+// Report of cards still without a Cardmarket link, with what Cardmarket has left in that expansion.
+{
+  const used = new Set<number>(); for (const c of cards) for (const v of c[6]) if (v[1]) used.add(v[1])
+  const leftByExp = new Map<number, string[]>()
+  for (const [id, e] of cmExp) if (!used.has(id)) { if (!leftByExp.has(e)) leftByExp.set(e, []); leftByExp.get(e)!.push(id + ' ' + cmNames.get(id)) }
+  const rep: any[] = []
+  sets.forEach((s, si) => {
+    if (s.lang !== 'EN') return
+    const miss = cards.filter(c => c[0] === si && !c[6].some((v: any) => v[1])).map(c => c[1] + ' ' + c[2])
+    if (!miss.length) return
+    const tally = new Map<number, number>()
+    for (const c of cards) if (c[0] === si) for (const e of expsByCompact.get(compact(c[2])) || []) tally.set(e, (tally.get(e) || 0) + 1)
+    rep.push({ set: s.name, id: s.id, cm: s.cm, n: cards.filter(c => c[0] === si).length, miss, left: s.cm ? (leftByExp.get(s.cm) || []).slice(0, 60) : [],
+      topExp: [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([e, n]) => [e, n, (leftByExp.get(e) || []).slice(0, 5)]) })
+  })
+  fs.writeFileSync('/tmp/cm-report.json', JSON.stringify(rep))
+}
 console.log(`Cardmarket links filled in: ${cmFilled}; sets given an expansion: ${inferred.length}`)
 console.log(inferred.join('\n'))
 
